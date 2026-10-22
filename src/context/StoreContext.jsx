@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from 'react';
 import { createSeedState } from '../data/seed';
-import { NEXT_STAGE } from '../data/statuses';
+import { APPROVAL_STAGES, NEXT_STAGE, STATUS, openApproval } from '../data/statuses';
 import { useToast } from './ToastContext';
-import { can } from '../auth/permissions';
+import { can, rolesFor, setAccessOverrides } from '../auth/permissions';
 import { checkAvailability, round } from '../utils';
 import { useAuth } from './AuthContext';
 import { tr, useLang } from '../i18n';
@@ -10,20 +10,24 @@ import { tr, useLang } from '../i18n';
 // All app data lives here and is persisted to localStorage.
 // Swap the reducer's actions for API calls when a backend is added.
 
-const STORAGE_KEY = 'unifiedtree-scm-v1';
+const STORAGE_KEY = 'unifiedtree-scm-v2';
 const StoreContext = createContext(null);
 
 function load() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const s = JSON.parse(saved);
+      return { ...s, settings: { ...createSeedState().settings, ...s.settings } };
+    }
   } catch {
     /* ignore corrupt storage */
   }
   return createSeedState();
 }
 
-const event = (status, p, note = '') => ({ status, at: p.at, by: p.user.name, role: p.user.role, note });
+const event = (status, p, note = '', extra = {}) => ({ status, at: p.at, by: p.user.name, role: p.user.role, note, ...extra });
+const stageName = (status) => STATUS[status].label.split(' · ')[0];
 
 function notify(state, p, { roles = [], userId = null, orderId = null, message }) {
   const n = state.counters.notif + 1;
@@ -37,6 +41,31 @@ function notify(state, p, { roles = [], userId = null, orderId = null, message }
 function updateOrder(state, id, fn) {
   return { ...state, orders: state.orders.map((o) => (o.id === id ? fn(o) : o)) };
 }
+
+/** Moves an order into a stage, logs who did it, and opens a stage approval if the admin requires one. */
+function enterStage(state, o, status, p, note = '') {
+  const needs = state.settings.approvalStages.includes(status);
+  return {
+    ...o,
+    status,
+    approval: needs ? { status, state: 'pending', requestedBy: p.user.name, requestedById: p.user.id, at: p.at } : null,
+    history: [...o.history, event(status, p, note)],
+  };
+}
+
+/** Tells the stage approvers that a stage is waiting for their sign-off. */
+function askApproval(state, p, id) {
+  const o = state.orders.find((x) => x.id === id);
+  if (!openApproval(o)) return state;
+  return notify(state, p, {
+    roles: rolesFor('stage.approve').filter((r) => r !== 'admin'),
+    orderId: id,
+    message: `${id}: stage "${stageName(o.status)}" by ${p.user.name} is waiting for your approval`,
+  });
+}
+
+// Actions that move an order forward are blocked until its current stage is approved.
+const GATED = ['ADVANCE_STAGE', 'QC_SUBMIT', 'CLIENT_DECISION', 'DISPATCH', 'DELIVER'];
 
 /** Adds a chat message to the order and alerts the other side (sales <-> factory). */
 function postMessage(state, p, order, { kind = 'text', code = null, text = '' }) {
@@ -64,6 +93,7 @@ function logStock(state, p, rmId, change, reason) {
 
 function reducer(state, { type, payload: p }) {
   const order = p?.id ? state.orders.find((o) => o.id === p.id) : null;
+  if (GATED.includes(type) && order && openApproval(order)) return state;
 
   switch (type) {
     case 'CREATE_ORDER': {
@@ -77,14 +107,15 @@ function reducer(state, { type, payload: p }) {
         qc: null,
         clientApproval: null,
         dispatch: null,
+        approval: null,
         materialsDeducted: false,
-        history: [event('PENDING_REVIEW', p, 'Customer PO entered and sent to factory')],
+        history: [event('PENDING_REVIEW', p, 'Work order entered and sent to factory')],
       };
       const next = { ...state, counters: { ...state.counters, order: state.counters.order + 1 }, orders: [o, ...state.orders] };
       return notify(next, p, {
         roles: ['factory'],
         orderId: o.id,
-        message: `New PO ${o.id} from ${o.customer.name} awaiting factory review`,
+        message: `New work order ${o.id} from ${o.customer.name} awaiting factory review`,
       });
     }
 
@@ -113,25 +144,22 @@ function reducer(state, { type, payload: p }) {
       };
       rows.forEach((r) => (next = logStock(next, p, r.rmId, -r.required, `Issued for ${p.id}`)));
       next = updateOrder(next, p.id, (o) => ({
-        ...o,
-        status: 'ACCEPTED',
+        ...enterStage(next, o, 'ACCEPTED', p, p.note || 'Raw material available – order accepted'),
         holdReason: null,
         holdCode: null,
         holdNote: '',
         materialsDeducted: true,
-        history: [...o.history, event('ACCEPTED', p, p.note || 'Raw material available – order accepted')],
       }));
-      return notify(next, p, { userId: order.createdBy, orderId: p.id, message: `${p.id} ACCEPTED by factory` });
+      next = notify(next, p, { userId: order.createdBy, orderId: p.id, message: `${p.id} ACCEPTED by factory` });
+      return askApproval(next, p, p.id);
     }
 
     case 'ADVANCE_STAGE': {
       if (!order || NEXT_STAGE[order.status] !== p.to) return state;
-      let next = updateOrder(state, p.id, (o) => ({
-        ...o,
-        status: p.to,
-        history: [...o.history, event(p.to, p, p.note)],
-      }));
-      if (p.to === 'READY_TO_DISPATCH') {
+      let next = updateOrder(state, p.id, (o) => enterStage(state, o, p.to, p, p.note));
+      next = askApproval(next, p, p.id);
+      // QC is told once the order is really ready: now, or when the supervisor approves the stage.
+      if (p.to === 'READY_TO_DISPATCH' && !openApproval(next.orders.find((o) => o.id === p.id))) {
         next = notify(next, p, {
           roles: ['qc'],
           userId: order.createdBy,
@@ -146,9 +174,8 @@ function reducer(state, { type, payload: p }) {
       if (!order || order.status !== 'READY_TO_DISPATCH') return state;
       const passed = p.result === 'PASS';
       const status = passed ? 'QC_APPROVED' : 'IN_PRODUCTION';
-      const next = updateOrder(state, p.id, (o) => ({
-        ...o,
-        status,
+      let next = updateOrder(state, p.id, (o) => ({
+        ...enterStage(state, o, status, p, `QC ${passed ? 'passed' : 'failed – sent back to production'}: ${p.remarks}`),
         qc: {
           result: p.result,
           checks: p.checks,
@@ -159,8 +186,8 @@ function reducer(state, { type, payload: p }) {
           by: p.user.name,
           at: p.at,
         },
-        history: [...o.history, event(status, p, `QC ${passed ? 'passed' : 'failed – sent back to production'}: ${p.remarks}`)],
       }));
+      next = askApproval(next, p, p.id);
       return passed
         ? notify(next, p, {
             userId: order.createdBy,
@@ -178,12 +205,11 @@ function reducer(state, { type, payload: p }) {
     case 'CLIENT_DECISION': {
       if (!order || order.status !== 'QC_APPROVED') return state;
       const status = p.approved ? 'CLIENT_APPROVED' : 'IN_PRODUCTION';
-      const next = updateOrder(state, p.id, (o) => ({
-        ...o,
-        status,
+      let next = updateOrder(state, p.id, (o) => ({
+        ...enterStage(state, o, status, p, p.approved ? p.note : `Client raised concern – rework: ${p.note}`),
         clientApproval: p.approved ? { note: p.note, by: p.user.name, at: p.at } : o.clientApproval,
-        history: [...o.history, event(status, p, p.approved ? p.note : `Client raised concern – rework: ${p.note}`)],
       }));
+      next = askApproval(next, p, p.id);
       return notify(next, p, {
         roles: p.approved ? ['factory'] : ['factory', 'qc'],
         orderId: p.id,
@@ -195,10 +221,8 @@ function reducer(state, { type, payload: p }) {
       if (!order || order.status !== 'CLIENT_APPROVED') return state;
       const d = { ...p.dispatch, by: p.user.name, at: p.at };
       const next = updateOrder(state, p.id, (o) => ({
-        ...o,
-        status: 'DISPATCHED',
+        ...enterStage(state, o, 'DISPATCHED', p, `${d.carrier} · Tracking ${d.trackingId}`),
         dispatch: d,
-        history: [...o.history, event('DISPATCHED', p, `${d.carrier} · Tracking ${d.trackingId}`)],
       }));
       return notify(next, p, {
         userId: order.createdBy,
@@ -209,11 +233,38 @@ function reducer(state, { type, payload: p }) {
 
     case 'DELIVER': {
       if (!order || order.status !== 'DISPATCHED') return state;
-      return updateOrder(state, p.id, (o) => ({
+      return updateOrder(state, p.id, (o) => enterStage(state, o, 'DELIVERED', p, p.note || 'Delivered to customer'));
+    }
+
+    case 'APPROVE_STAGE':
+    case 'REJECT_STAGE': {
+      const a = order && openApproval(order);
+      if (!a || a.state !== 'pending' || !can(p.user.role, 'stage.approve')) return state;
+      if (p.user.role !== 'admin' && a.requestedById === p.user.id) return state;
+      const approved = type === 'APPROVE_STAGE';
+      const note = p.note?.trim() || (approved ? 'Stage approved' : 'Stage rejected');
+      const next = updateOrder(state, p.id, (o) => ({
         ...o,
-        status: 'DELIVERED',
-        history: [...o.history, event('DELIVERED', p, p.note || 'Delivered to customer')],
+        approval: { ...a, state: approved ? 'approved' : 'rejected', decidedBy: p.user.name, decidedById: p.user.id, decidedAt: p.at, note },
+        history: [...o.history, event(o.status, p, `${approved ? '✔ Approved' : '✖ Rejected'} – ${note}`, { approval: approved ? 'approved' : 'rejected' })],
       }));
+      return notify(next, p, {
+        roles: approved && order.status === 'READY_TO_DISPATCH' ? ['qc'] : [],
+        userId: a.requestedById,
+        orderId: p.id,
+        message: `${p.id}: stage "${stageName(order.status)}" ${approved ? 'approved' : `rejected – ${note}`} by ${p.user.name}`,
+      });
+    }
+
+    case 'RESUBMIT_STAGE': {
+      const a = order && openApproval(order);
+      if (!a || a.state !== 'rejected') return state;
+      const next = updateOrder(state, p.id, (o) => ({
+        ...o,
+        approval: { status: o.status, state: 'pending', requestedBy: p.user.name, requestedById: p.user.id, at: p.at },
+        history: [...o.history, event(o.status, p, `Sent again for approval${p.note ? ` – ${p.note}` : ''}`, { approval: 'requested' })],
+      }));
+      return askApproval(next, p, p.id);
     }
 
     case 'SEND_MESSAGE': {
@@ -258,6 +309,21 @@ function reducer(state, { type, payload: p }) {
         ),
       };
 
+    // ---- Administrator settings ----
+    case 'SET_LABELS':
+      if (p.user.role !== 'admin') return state;
+      return { ...state, settings: { ...state.settings, labels: p.labels } };
+
+    case 'SET_ACCESS': {
+      if (p.user.role !== 'admin' || p.role === 'admin') return state;
+      const roles = rolesFor(p.perm).filter((r) => r !== p.role);
+      return { ...state, settings: { ...state.settings, access: { ...state.settings.access, [p.perm]: p.on ? [...roles, p.role] : roles } } };
+    }
+
+    case 'SET_APPROVAL_STAGES':
+      if (p.user.role !== 'admin') return state;
+      return { ...state, settings: { ...state.settings, approvalStages: APPROVAL_STAGES.filter((s) => p.stages.includes(s)) } };
+
     case 'RESET':
       return createSeedState();
 
@@ -275,20 +341,32 @@ const TOASTS = {
   CLIENT_DECISION: (p, t) => t(p.approved ? 'toast.clientOk' : 'toast.clientNo', { id: p.id }),
   DISPATCH: (p, t) => t('toast.dispatch', { id: p.id, tid: p.dispatch.trackingId }),
   DELIVER: (p, t) => t('toast.deliver', { id: p.id }),
+  APPROVE_STAGE: (p, t) => t('toast.approved', { id: p.id }),
+  REJECT_STAGE: (p, t) => t('toast.rejected', { id: p.id }),
+  RESUBMIT_STAGE: (p, t) => t('toast.resubmit', { id: p.id }),
   SEND_MESSAGE: (p, t) => t('toast.message'),
   REPORT_PROBLEM: (p, t) => t('toast.problem'),
   SOLVE_PROBLEM: (p, t) => t('toast.solved'),
   RESTOCK: (p, t) => t('toast.restock'),
   ADD_MATERIAL: (p, t) => t('toast.addMaterial', { name: p.material.name }),
+  SET_LABELS: (p, t) => t('toast.saved'),
+  SET_APPROVAL_STAGES: (p, t) => t('toast.saved'),
   RESET: (p, t) => t('toast.reset'),
 };
-const ERROR_TOASTS = (type, p) => (type === 'QC_SUBMIT' && p.result !== 'PASS') || type === 'REPORT_PROBLEM';
+const ERROR_TOASTS = (type, p) =>
+  (type === 'QC_SUBMIT' && p.result !== 'PASS') || type === 'REPORT_PROBLEM' || type === 'REJECT_STAGE';
 
 export function StoreProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, undefined, load);
   const { user } = useAuth();
   const { toast } = useToast();
-  const { t } = useLang();
+  const { t, setOverrides } = useLang();
+
+  // The administrator's access changes apply before any child checks a permission in this render.
+  setAccessOverrides(state.settings.access);
+
+  // Section names chosen by the administrator replace the default labels for every role.
+  useEffect(() => setOverrides(state.settings.labels), [state.settings.labels, setOverrides]);
 
   useEffect(() => {
     try {
@@ -316,13 +394,13 @@ export function useStore() {
   return useContext(StoreContext);
 }
 
-/** Orders the current user may see: sales persons only see their own POs. */
+/** Orders the current user may see: sales persons only see their own work orders. */
 export function useVisibleOrders() {
   const { state } = useStore();
   const { user } = useAuth();
   return useMemo(
     () => (can(user?.role, 'orders.viewAll') ? state.orders : state.orders.filter((o) => o.createdBy === user?.id)),
-    [state.orders, user],
+    [state.orders, state.settings, user],
   );
 }
 

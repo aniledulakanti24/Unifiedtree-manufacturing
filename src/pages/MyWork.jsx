@@ -3,14 +3,17 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useStore, useVisibleOrders } from '../context/StoreContext';
 import { can } from '../auth/permissions';
-import { NEXT_STAGE, pendingActionFor } from '../data/statuses';
+import { NEXT_STAGE, openApproval, pendingActionFor } from '../data/statuses';
 import { STAGE_ICONS } from '../data/reasons';
-import { PriorityBadge, dueText } from '../components/ui';
+import { ApprovalBadge, DueChip, PeopleLine, PriorityBadge, StatusBadge, WorkDetails, dueText, dueTone } from '../components/ui';
+import StageApproval from '../components/StageApproval';
 import { ConfirmDialog, ReasonDialog, reasonRecord } from '../components/ReasonPicker';
 import ProblemBox from '../components/ProblemBox';
 import { LangToggle } from '../components/Layout';
 import { useLang } from '../i18n';
-import { checkAvailability, daysUntil } from '../utils';
+import { checkAvailability, daysUntil, itemsSummary } from '../utils';
+
+const VIEW_KEY = 'unifiedtree-scm-work-view';
 
 // Big button text for moving an order to its next production stage.
 const ADVANCE_LABEL = { ACCEPTED: 'act.start', IN_PRODUCTION: 'act.toPacking', PACKAGING: 'act.toQc' };
@@ -22,6 +25,21 @@ export default function MyWork() {
   const { t } = useLang();
   const orders = useVisibleOrders();
   const [dialog, setDialog] = useState(null);
+  const [view, setViewState] = useState(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'cards' ? 'cards' : 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
+  const setView = (v) => {
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* ignore */
+    }
+    setViewState(v);
+  };
 
   const jobs = orders
     .filter((o) => pendingActionFor(user.role, o) || o.problem)
@@ -33,20 +51,37 @@ export default function MyWork() {
     );
 
   return (
-    <div className="work">
+    <div className={`work ${view === 'grid' ? 'work-wide' : ''}`}>
       <div className="work-head">
         <div>
           <h1>{t('work.hello', { name: user.name.split(' ')[0] })}</h1>
           <p className="work-count">{jobs.length ? t('work.count', { n: jobs.length }) : t('work.none')}</p>
         </div>
-        <LangToggle className="btn lg lang-big" />
+        <div className="row-gap">
+          <div className="segmented view-toggle" role="group" aria-label={t('work.view')}>
+            {['grid', 'cards'].map((v) => (
+              <button key={v} className={view === v ? 'active' : ''} aria-pressed={view === v} onClick={() => setView(v)}>
+                {t(`work.view.${v}`)}
+              </button>
+            ))}
+          </div>
+          <LangToggle className="btn lg lang-big" />
+        </div>
       </div>
 
-      <div className="work-list">
-        {jobs.map((o) => (
-          <JobCard key={o.id} order={o} openDialog={setDialog} />
-        ))}
-      </div>
+      {view === 'grid' ? (
+        <div className="mini-grid">
+          {jobs.map((o) => (
+            <MiniWorkCard key={o.id} order={o} />
+          ))}
+        </div>
+      ) : (
+        <div className="work-list">
+          {jobs.map((o) => (
+            <JobCard key={o.id} order={o} openDialog={setDialog} />
+          ))}
+        </div>
+      )}
 
       <Link to="/dashboard" className="work-foot small">
         {t('work.fullDashboard')} →
@@ -58,14 +93,37 @@ export default function MyWork() {
   );
 }
 
+/** Small card for the grid view: what, for whom, when it is due and what to do next. */
+function MiniWorkCard({ order: o }) {
+  const { user } = useAuth();
+  const { state } = useStore();
+  const { t } = useLang();
+  const action = pendingActionFor(user.role, o);
+  return (
+    <Link to={`/orders/${o.id}`} className={`mini-card job-${dueTone(o.expectedDeliveryDate)}`}>
+      <span className="mini-head">
+        <strong className="nowrap">{o.id}</strong>
+        <DueChip date={o.expectedDeliveryDate} />
+      </span>
+      <span className="mini-customer">{o.customer.name}</span>
+      <span className="mini-work">🛠️ {itemsSummary(o, state.products)}</span>
+      <span className="mini-badges">
+        <StatusBadge status={o.status} />
+        <ApprovalBadge order={o} />
+      </span>
+      {o.problem && <span className="problem-line small">{t('work.problem')}</span>}
+      <span className="mini-action">{action ?? t('work.open')} →</span>
+      <span className="muted small">👤 {o.createdByName}</span>
+    </Link>
+  );
+}
+
 function JobCard({ order: o, openDialog }) {
   const { user } = useAuth();
   const { state, act } = useStore();
   const { t } = useLang();
   const role = user.role;
-  const days = daysUntil(o.expectedDeliveryDate);
-  const tone = days < 0 ? 'late' : days <= 3 ? 'soon' : 'ok';
-  const product = (id) => state.products.find((p) => p.id === id)?.name ?? id;
+  const tone = dueTone(o.expectedDeliveryDate);
   const messages = o.messages?.length ?? 0;
 
   const confirm = (message, onYes) =>
@@ -73,7 +131,9 @@ function JobCard({ order: o, openDialog }) {
 
   // The one main thing this person should do next on this order.
   let main = null;
-  if (['PENDING_REVIEW', 'ON_HOLD'].includes(o.status) && can(role, 'orders.review')) {
+  if (openApproval(o)) {
+    main = <StageApproval order={o} big />;
+  } else if (['PENDING_REVIEW', 'ON_HOLD'].includes(o.status) && can(role, 'orders.review')) {
     const { rows, ok } = checkAvailability(o.items, state.products, state.materials);
     const short = rows.filter((r) => r.shortfall).map((r) => `${r.name} (${r.shortfall} ${r.unit})`);
     main = (
@@ -156,23 +216,12 @@ function JobCard({ order: o, openDialog }) {
         <strong>{o.customer.name}</strong> <span className="muted small">{o.id}</span>{' '}
         {o.priority !== 'Normal' && <PriorityBadge priority={o.priority} />}
       </div>
-
-      <ul className="job-items">
-        {o.items.map((it, i) => (
-          <li key={i}>
-            <span className="job-qty">{it.qty}</span>
-            <span>
-              <strong>{product(it.productId)}</strong>
-              {it.specs && <span className="job-spec">{it.specs}</span>}
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      <div className="needs-box">
-        <strong>📝 {t('work.customerNeeds')}</strong>
-        <p>{o.requirements || <span className="muted">{t('work.noNeeds')}</span>}</p>
+      <div className="muted small">
+        PO {o.customerPoNo} · PI {o.piNo || '—'}
       </div>
+
+      <WorkDetails order={o} products={state.products} />
+      <PeopleLine order={o} />
 
       {o.problem && <ProblemBox order={o} />}
       {main}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLang } from '../i18n';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { can } from '../auth/permissions';
@@ -7,6 +8,7 @@ import Icon from '../components/Icon';
 import { fmtDateTime } from '../utils';
 
 export default function Inventory() {
+  const { t } = useLang();
   const { user } = useAuth();
   const { state } = useStore();
   const canManage = can(user.role, 'inventory.manage');
@@ -17,7 +19,7 @@ export default function Inventory() {
 
   return (
     <>
-      <PageHeader title="Raw Materials" subtitle="Stock used by the factory to decide whether orders can be accepted.">
+      <PageHeader title={t('nav.inventory')} subtitle="Stock used by the factory to decide whether orders can be accepted.">
         {canManage && (
           <button className="btn primary" onClick={() => setAdding(true)}>
             <Icon name="plus" size={16} /> Add raw material

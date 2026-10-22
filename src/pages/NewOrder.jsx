@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
+import { useLang } from '../i18n';
 import { Card, PageHeader } from '../components/ui';
 import Icon from '../components/Icon';
 import { checkAvailability, todayISO } from '../utils';
@@ -9,10 +10,13 @@ const emptyItem = () => ({ productId: '', qty: '', specs: '' });
 
 export default function NewOrder() {
   const { state, act } = useStore();
+  const { t } = useLang();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     customerPoNo: '',
     poDate: todayISO(),
+    piNo: '',
+    piDate: todayISO(),
     expectedDeliveryDate: '',
     priority: 'Normal',
     requirements: '',
@@ -45,6 +49,7 @@ export default function NewOrder() {
     if (!form.customer.name.trim()) errs.push('Customer name is required.');
     if (!form.customer.phone.trim() && !form.customer.email.trim()) errs.push('Enter customer phone or email.');
     if (!form.customerPoNo.trim()) errs.push('Customer PO number is required.');
+    if (!form.piNo.trim()) errs.push('PI (proforma invoice) number is required.');
     if (!form.expectedDeliveryDate) errs.push('Expected delivery date is required.');
     else if (form.expectedDeliveryDate < todayISO()) errs.push('Expected delivery date cannot be in the past.');
     if (validItems.length === 0) errs.push('Add at least one product with quantity.');
@@ -53,12 +58,14 @@ export default function NewOrder() {
     setErrors(errs);
     if (errs.length) return setAttempt((n) => n + 1);
 
-    const id = `PO-${new Date().getFullYear()}-${String(state.counters.order + 1).padStart(4, '0')}`;
+    const id = `WO-${new Date().getFullYear()}-${String(state.counters.order + 1).padStart(4, '0')}`;
     act('CREATE_ORDER', {
       order: {
         id,
         customerPoNo: form.customerPoNo.trim(),
         poDate: form.poDate,
+        piNo: form.piNo.trim(),
+        piDate: form.piDate,
         expectedDeliveryDate: form.expectedDeliveryDate,
         priority: form.priority,
         requirements: form.requirements.trim(),
@@ -72,11 +79,11 @@ export default function NewOrder() {
   return (
     <form onSubmit={submit}>
       <PageHeader
-        title="New Customer PO"
-        subtitle="Enter the customer's purchase order. On submit it goes to the factory for review."
+        title={t('nav.newOrder')}
+        subtitle="Enter the customer, their PO and PI numbers and the products. On submit it goes to the factory for review."
         back={
           <Link to="/orders" className="back-link">
-            <Icon name="arrowLeft" size={16} /> Purchase orders
+            <Icon name="arrowLeft" size={16} /> {t('nav.orders')}
           </Link>
         }
       />
@@ -96,13 +103,33 @@ export default function NewOrder() {
       )}
 
       <div className="grid-2">
-        <Card title="1. Customer details" icon="user">
+        <Card title="1. Customer, PO & PI" icon="user">
           <div className="form-grid">
             <label className="span-2">
               <span>
                 Customer / Company name <span className="req">*</span>
               </span>
               <input value={form.customer.name} onChange={(e) => setCustomer('name', e.target.value)} autoComplete="organization" />
+            </label>
+            <label>
+              <span>
+                Customer PO number <span className="req">*</span>
+              </span>
+              <input value={form.customerPoNo} onChange={(e) => set('customerPoNo', e.target.value)} />
+            </label>
+            <label>
+              PO date
+              <input type="date" value={form.poDate} onChange={(e) => set('poDate', e.target.value)} />
+            </label>
+            <label>
+              <span>
+                PI number <span className="req">*</span>
+              </span>
+              <input value={form.piNo} onChange={(e) => set('piNo', e.target.value)} placeholder="Proforma invoice no." />
+            </label>
+            <label>
+              PI date
+              <input type="date" value={form.piDate} onChange={(e) => set('piDate', e.target.value)} />
             </label>
             <label>
               Contact person
@@ -124,18 +151,8 @@ export default function NewOrder() {
           </div>
         </Card>
 
-        <Card title="2. PO details" icon="file">
+        <Card title="2. Work order details" icon="file">
           <div className="form-grid">
-            <label>
-              <span>
-                Customer PO number <span className="req">*</span>
-              </span>
-              <input value={form.customerPoNo} onChange={(e) => set('customerPoNo', e.target.value)} />
-            </label>
-            <label>
-              PO date
-              <input type="date" value={form.poDate} onChange={(e) => set('poDate', e.target.value)} />
-            </label>
             <label>
               <span>
                 Expected delivery date <span className="req">*</span>

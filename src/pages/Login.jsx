@@ -5,13 +5,14 @@ import { ROLES } from '../auth/permissions';
 import Icon from '../components/Icon';
 
 const ROLE_INFO = {
-  admin: { icon: 'lock', hint: 'Full access to every stage and the access matrix.' },
-  sales: { icon: 'file', hint: 'Enters customer POs and shares QC reports with the client.' },
+  admin: { icon: 'lock', hint: 'Full access. Decides section names, access and which stages need approval.' },
+  sales: { icon: 'file', hint: 'Creates work orders (customer PO & PI) and shares QC reports with the client.' },
   factory: { icon: 'factory', hint: 'Checks raw material, runs production and dispatch.' },
+  supervisor: { icon: 'checkCircle', hint: 'Approves every stage before the order moves on.' },
   qc: { icon: 'shield', hint: 'Inspects finished goods before dispatch.' },
 };
 
-const FLOW = ['Sales PO', 'Factory review', 'Production', 'QC', 'Client approval', 'Dispatch'];
+const FLOW = ['Work order', 'Factory review', 'Production', 'Stage approvals', 'QC', 'Client approval', 'Dispatch'];
 
 export default function Login() {
   const { login } = useAuth();
@@ -27,7 +28,7 @@ export default function Login() {
             <small>Supply Chain Management</small>
           </div>
         </div>
-        <h1>From customer PO to dispatch, in one place.</h1>
+        <h1>From work order to dispatch, in one place.</h1>
         <ol className="login-flow">
           {FLOW.map((f) => (
             <li key={f}>{f}</li>

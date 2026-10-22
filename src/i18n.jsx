@@ -14,8 +14,8 @@ const STRINGS = {
     'navg.Admin': 'Admin',
     'nav.work': 'My work',
     'nav.dashboard': 'Dashboard',
-    'nav.orders': 'Purchase Orders',
-    'nav.newOrder': 'New Customer PO',
+    'nav.orders': 'Work Orders',
+    'nav.newOrder': 'New Work Order',
     'nav.review': 'Factory Review',
     'nav.production': 'Production',
     'nav.qc': 'Quality Control',
@@ -29,6 +29,7 @@ const STRINGS = {
     'role.sales': 'Sales',
     'role.factory': 'Factory',
     'role.qc': 'QC',
+    'role.supervisor': 'Supervisor',
 
     'status.PENDING_REVIEW': 'New – check material',
     'status.ON_HOLD': 'On hold',
@@ -59,8 +60,37 @@ const STRINGS = {
     'due.late': '{n} days late',
     'due.late1': '1 day late',
     'due.today': 'Due today',
-    'due.left': '{n} days left',
-    'due.left1': '1 day left',
+    'due.left': 'Due in {n} days',
+    'due.left1': 'Due tomorrow',
+    'due.filter': 'Show by due date',
+    'due.all': 'All',
+    'due.overdue': 'Late',
+    'due.soon': 'Due in 0–3 days',
+    'due.week': 'Due in 4–7 days',
+    'due.later': 'Later',
+    'due.mine': 'My work',
+
+    'work.details': 'Work details',
+    'work.enteredBy': 'Entered by {name}',
+    'work.lastBy': 'Last update: {name}',
+    'work.view': 'Choose view',
+    'work.view.grid': '▦ Grid',
+    'work.view.cards': '☰ Detailed',
+
+    'approval.title': 'Stage approval',
+    'approval.pending': 'Waiting for stage approval',
+    'approval.pendingBy': '{stage} done by {name} – needs approval',
+    'approval.rejected': 'Approval rejected by {name}: {note}',
+    'approval.approve': '✔ Approve stage',
+    'approval.reject': '✖ Reject',
+    'approval.rejectedShort': 'Approval rejected',
+    'approval.resubmit': 'Send again for approval',
+    'approval.note': 'Comment (optional for approve, needed for reject)',
+    'approval.needNote': 'Write why you reject this stage.',
+    'approval.notSelf': 'You completed this stage – another approver must sign it off.',
+    'approval.waitingFor': 'Waiting for {roles} to approve',
+    'approval.approvedBy': 'Approved by {name}',
+    'act.approve': '✔ Approve stage',
 
     'work.hello': 'Hello, {name} 👋',
     'work.count': '{n} jobs waiting for you',
@@ -213,6 +243,10 @@ const STRINGS = {
     'toast.message': 'Message sent',
     'toast.problem': 'Problem sent to sales and factory',
     'toast.solved': 'Problem marked as solved',
+    'toast.approved': '{id}: stage approved',
+    'toast.rejected': '{id}: stage rejected',
+    'toast.resubmit': '{id}: sent again for approval',
+    'toast.saved': 'Settings saved',
   },
 
   hi: {
@@ -225,8 +259,8 @@ const STRINGS = {
     'navg.Admin': 'एडमिन',
     'nav.work': 'मेरा काम',
     'nav.dashboard': 'डैशबोर्ड',
-    'nav.orders': 'सभी ऑर्डर',
-    'nav.newOrder': 'नया ऑर्डर डालें',
+    'nav.orders': 'वर्क ऑर्डर',
+    'nav.newOrder': 'नया वर्क ऑर्डर',
     'nav.review': 'ऑर्डर जाँच',
     'nav.production': 'उत्पादन',
     'nav.qc': 'क्वालिटी जाँच',
@@ -240,6 +274,7 @@ const STRINGS = {
     'role.sales': 'सेल्स',
     'role.factory': 'फैक्ट्री',
     'role.qc': 'QC',
+    'role.supervisor': 'सुपरवाइज़र',
 
     'status.PENDING_REVIEW': 'नया – माल जाँचें',
     'status.ON_HOLD': 'रुका हुआ',
@@ -270,8 +305,37 @@ const STRINGS = {
     'due.late': '{n} दिन देर',
     'due.late1': '1 दिन देर',
     'due.today': 'आज देना है',
-    'due.left': '{n} दिन बाकी',
-    'due.left1': '1 दिन बाकी',
+    'due.left': '{n} दिन में देना है',
+    'due.left1': 'कल देना है',
+    'due.filter': 'देने की तारीख से देखें',
+    'due.all': 'सभी',
+    'due.overdue': 'देर से',
+    'due.soon': '0–3 दिन में',
+    'due.week': '4–7 दिन में',
+    'due.later': 'बाद में',
+    'due.mine': 'मेरा काम',
+
+    'work.details': 'काम की जानकारी',
+    'work.enteredBy': '{name} ने डाला',
+    'work.lastBy': 'आखिरी बदलाव: {name}',
+    'work.view': 'देखने का तरीका',
+    'work.view.grid': '▦ ग्रिड',
+    'work.view.cards': '☰ पूरी जानकारी',
+
+    'approval.title': 'चरण की मंज़ूरी',
+    'approval.pending': 'चरण की मंज़ूरी का इंतज़ार',
+    'approval.pendingBy': '{stage} – {name} ने किया, मंज़ूरी चाहिए',
+    'approval.rejected': '{name} ने मंज़ूरी नहीं दी: {note}',
+    'approval.approve': '✔ चरण मंज़ूर करें',
+    'approval.reject': '✖ मना करें',
+    'approval.rejectedShort': 'मंज़ूरी नहीं मिली',
+    'approval.resubmit': 'फिर से मंज़ूरी के लिए भेजें',
+    'approval.note': 'टिप्पणी (मना करने पर ज़रूरी)',
+    'approval.needNote': 'मना करने का कारण लिखें।',
+    'approval.notSelf': 'यह चरण आपने किया है – कोई दूसरा मंज़ूर करेगा।',
+    'approval.waitingFor': '{roles} की मंज़ूरी का इंतज़ार',
+    'approval.approvedBy': '{name} ने मंज़ूर किया',
+    'act.approve': '✔ चरण मंज़ूर करें',
 
     'work.hello': 'नमस्ते, {name} 👋',
     'work.count': 'आपके लिए {n} काम बाकी हैं',
@@ -423,8 +487,30 @@ const STRINGS = {
     'toast.message': 'संदेश भेजा गया',
     'toast.problem': 'समस्या सेल्स और फैक्ट्री को भेजी गई',
     'toast.solved': 'समस्या हल हुई',
+    'toast.approved': '{id}: चरण मंज़ूर',
+    'toast.rejected': '{id}: चरण मना किया',
+    'toast.resubmit': '{id}: फिर से मंज़ूरी के लिए भेजा',
+    'toast.saved': 'सेटिंग सेव हुई',
   },
 };
+
+// Section names the administrator can rename on the Roles & Access page.
+export const RENAMABLE_LABELS = [
+  'navg.Overview',
+  'navg.Operations',
+  'navg.Inventory',
+  'navg.Admin',
+  'nav.work',
+  'nav.dashboard',
+  'nav.orders',
+  'nav.newOrder',
+  'nav.review',
+  'nav.production',
+  'nav.qc',
+  'nav.dispatch',
+  'nav.inventory',
+  'nav.access',
+];
 
 /** Translate without React (used by the store to write English text into records). */
 export function tr(lang, key, vars) {
@@ -457,7 +543,19 @@ export function LangProvider({ children }) {
     setLangState(l);
   }, []);
 
-  const value = useMemo(() => ({ lang, setLang, t: (key, vars) => tr(lang, key, vars) }), [lang, setLang]);
+  // Names the administrator gave to sections; they replace the built-in label in every language.
+  const [overrides, setOverridesState] = useState({});
+  const setOverrides = useCallback((o) => setOverridesState(o ?? {}), []);
+
+  const value = useMemo(
+    () => ({
+      lang,
+      setLang,
+      setOverrides,
+      t: (key, vars) => (overrides[key] ? overrides[key] : tr(lang, key, vars)),
+    }),
+    [lang, setLang, overrides, setOverrides],
+  );
   return <LangContext.Provider value={value}>{children}</LangContext.Provider>;
 }
 

@@ -1,8 +1,10 @@
 import { useVisibleOrders } from '../context/StoreContext';
+import { useLang } from '../i18n';
 import { Card, PageHeader } from '../components/ui';
 import OrderTable from '../components/OrderTable';
 
 export default function FactoryReview() {
+  const { t } = useLang();
   const orders = useVisibleOrders();
   const pending = orders.filter((o) => o.status === 'PENDING_REVIEW');
   const held = orders.filter((o) => o.status === 'ON_HOLD');
@@ -10,11 +12,11 @@ export default function FactoryReview() {
   return (
     <>
       <PageHeader
-        title="Factory Review"
-        subtitle="New customer POs from sales. Accept if raw material is available, otherwise put on hold."
+        title={t('nav.review')}
+        subtitle="New work orders from sales. Accept if raw material is available, otherwise put on hold."
       />
       <Card icon="factory" title={`Awaiting decision (${pending.length})`}>
-        <OrderTable orders={pending} showMaterials showAction={false} empty="No new POs to review." />
+        <OrderTable orders={pending} showMaterials showAction={false} empty="No new work orders to review." />
       </Card>
       <Card icon="alert" title={`On hold (${held.length})`}>
         <OrderTable

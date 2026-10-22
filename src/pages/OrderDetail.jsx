@@ -3,9 +3,10 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { can, ROLES } from '../auth/permissions';
-import { NEXT_STAGE, nextStep } from '../data/statuses';
+import { NEXT_STAGE, canApprove, nextStep, openApproval } from '../data/statuses';
 import { DISPATCH_MODES, QC_CHECKS, VEHICLE_OPTIONS } from '../data/seed';
-import { Card, DueDate, PriorityBadge, StageTracker, StatusBadge } from '../components/ui';
+import { ApprovalBadge, Card, DueChip, DueDate, PriorityBadge, StageTracker, StatusBadge, WorkDetails } from '../components/ui';
+import StageApproval from '../components/StageApproval';
 import { AccessDenied } from '../components/RequirePermission';
 import MaterialCheck from '../components/MaterialCheck';
 import OrderChat from '../components/OrderChat';
@@ -35,11 +36,11 @@ export default function OrderDetail() {
       </div>
     );
   if (!can(user.role, 'orders.viewAll') && order.createdBy !== user.id)
-    return <AccessDenied role={user.role} message="You can only view purchase orders you created." />;
+    return <AccessDenied role={user.role} message="You can only view work orders you created." />;
 
-  const product = (pid) => state.products.find((p) => p.id === pid);
   const step = nextStep(order);
-  const mine = step && can(user.role, 'orders.view') && (step.roles.includes(user.role) || user.role === 'admin');
+  const mine = step && (step.approval && openApproval(order).state === 'pending' ? canApprove(user, order) : step.roles.includes(user.role) || user.role === 'admin');
+  const done = ['DISPATCHED', 'DELIVERED'].includes(order.status);
 
   return (
     <>
@@ -49,16 +50,22 @@ export default function OrderDetail() {
       <div className="page-header">
         <div>
           <h1>
-            {order.id} <StatusBadge status={order.status} />
+            {order.id} <StatusBadge status={order.status} /> <ApprovalBadge order={order} />
           </h1>
           <p className="muted">
-            {order.customer.name} · Customer PO {order.customerPoNo} · entered by {order.createdByName} on {fmtDate(order.createdAt)}
+            {order.customer.name} · Customer PO {order.customerPoNo} · PI {order.piNo || '—'} · entered by{' '}
+            <strong>{order.createdByName}</strong> on {fmtDate(order.createdAt)}
           </p>
         </div>
+        {!done && (
+          <div className="page-actions">
+            <DueChip date={order.expectedDeliveryDate} big />
+          </div>
+        )}
       </div>
 
       <Card className="tracker-card">
-        <StageTracker status={order.status} />
+        <StageTracker status={order.status} history={order.history} approval={order.approval} />
         {step ? (
           <div className={`next-step ${mine ? 'mine' : ''}`}>
             <Icon name={mine ? 'arrowRight' : 'clock'} size={18} />
@@ -91,43 +98,24 @@ export default function OrderDetail() {
         </div>
 
         <div className="detail-main stack">
-          <Card title={t('detail.products')} icon="box">
-            <div className="requirements needs-box">
-              <strong>📝 {t('work.customerNeeds')}</strong>
-              <p>{order.requirements || <span className="muted">{t('work.noNeeds')}</span>}</p>
-            </div>
-            <div className="table-wrap">
-              <table className="table compact">
-                <thead>
-                  <tr>
-                    <th scope="col">{t('detail.product')}</th>
-                    <th scope="col" className="num">
-                      {t('detail.qty')}
-                    </th>
-                    <th scope="col">{t('detail.spec')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.items.map((it, i) => (
-                    <tr key={i}>
-                      <td>
-                        {product(it.productId)?.name ?? it.productId} <span className="muted small">{it.productId}</span>
-                      </td>
-                      <td className="num">
-                        <strong>{it.qty}</strong>
-                      </td>
-                      <td>{it.specs || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <WorkDetails order={order} products={state.products} />
 
           <Card title="Customer & delivery" icon="user">
             <dl className="dl">
               <dt>Customer</dt>
               <dd>{order.customer.name}</dd>
+              <dt>Customer PO no.</dt>
+              <dd>
+                <strong>{order.customerPoNo}</strong> {order.poDate && <span className="muted small">· {fmtDate(order.poDate)}</span>}
+              </dd>
+              <dt>PI no.</dt>
+              <dd>
+                <strong>{order.piNo || '—'}</strong> {order.piDate && <span className="muted small">· {fmtDate(order.piDate)}</span>}
+              </dd>
+              <dt>Entered by</dt>
+              <dd>
+                {order.createdByName} <span className="muted small">· {fmtDateTime(order.createdAt)}</span>
+              </dd>
               <dt>Contact</dt>
               <dd>{order.customer.contact || '—'}</dd>
               <dt>Phone</dt>
@@ -138,7 +126,7 @@ export default function OrderDetail() {
               <dd>{order.customer.address || '—'}</dd>
               <dt>Expected delivery</dt>
               <dd>
-                <DueDate date={order.expectedDeliveryDate} done={['DISPATCHED', 'DELIVERED'].includes(order.status)} />
+                <DueDate date={order.expectedDeliveryDate} done={done} />
               </dd>
               <dt>Priority</dt>
               <dd>
@@ -162,10 +150,10 @@ export default function OrderDetail() {
           <Card title="Activity log" icon="clock">
             <ol className="timeline">
               {[...order.history].reverse().map((h, i) => (
-                <li key={i}>
+                <li key={i} className={h.approval ? `tl-approval ${h.approval}` : ''}>
                   <StatusBadge status={h.status} />
                   <div className="small">
-                    <strong>{h.by}</strong> <span className="muted">· {fmtDateTime(h.at)}</span>
+                    <strong>{h.by}</strong> <span className="muted">· {ROLES[h.role]?.label ?? h.role} · {fmtDateTime(h.at)}</span>
                   </div>
                   {h.note && <div className="small">{h.note}</div>}
                 </li>
@@ -246,7 +234,8 @@ function ActionPanel({ order }) {
   const s = order.status;
 
   let body = null;
-  if (['PENDING_REVIEW', 'ON_HOLD'].includes(s) && can(role, 'orders.review')) body = <ReviewAction order={order} />;
+  if (openApproval(order)) body = <StageApproval order={order} />;
+  else if (['PENDING_REVIEW', 'ON_HOLD'].includes(s) && can(role, 'orders.review')) body = <ReviewAction order={order} />;
   else if (NEXT_STAGE[s] && can(role, 'production.update')) body = <StageAction order={order} />;
   else if (s === 'READY_TO_DISPATCH' && can(role, 'qc.inspect')) body = <QcAction order={order} />;
   else if (s === 'QC_APPROVED' && can(role, 'client.approve')) body = <ClientAction order={order} />;
@@ -254,7 +243,11 @@ function ActionPanel({ order }) {
   else if (s === 'DISPATCHED' && can(role, 'delivery.confirm')) body = <DeliverAction order={order} />;
 
   return (
-    <Card title={body ? t('action.your') : t('action.status')} icon={body ? 'arrowRight' : 'info'} className={body ? 'action-card' : ''}>
+    <Card
+      title={openApproval(order) ? t('approval.title') : body ? t('action.your') : t('action.status')}
+      icon={openApproval(order) ? 'lock' : body ? 'arrowRight' : 'info'}
+      className={body ? 'action-card' : ''}
+    >
       {body ?? <p className="muted">{s === 'DELIVERED' ? t('action.complete') : t('action.none', { s: t(`status.${s}`) })}</p>}
     </Card>
   );

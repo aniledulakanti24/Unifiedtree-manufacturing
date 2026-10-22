@@ -23,7 +23,7 @@ const NAV_GROUPS = [
     title: 'Operations',
     items: [
       { to: '/review', label: 'nav.review', icon: 'factory', perm: 'orders.review', count: ['PENDING_REVIEW', 'ON_HOLD'] },
-      { to: '/production', label: 'nav.production', icon: 'layers', perm: 'production.update', count: ['ACCEPTED', 'IN_PRODUCTION', 'PACKAGING'] },
+      { to: '/production', label: 'nav.production', icon: 'layers', perm: 'production.view', count: ['ACCEPTED', 'IN_PRODUCTION', 'PACKAGING'] },
       { to: '/qc', label: 'nav.qc', icon: 'shield', perm: 'qc.inspect', count: ['READY_TO_DISPATCH'] },
       { to: '/dispatch', label: 'nav.dispatch', icon: 'truck', perm: 'dispatch.manage', count: ['CLIENT_APPROVED'] },
     ],
@@ -208,8 +208,8 @@ function GlobalSearch() {
         type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search PO no. or customer…"
-        aria-label="Search purchase orders"
+        placeholder="Search WO no., PO / PI no. or customer…"
+        aria-label="Search work orders"
       />
       <kbd aria-hidden="true">/</kbd>
     </form>

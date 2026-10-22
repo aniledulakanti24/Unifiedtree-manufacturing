@@ -33,14 +33,14 @@ export default function App() {
   return (
     <Routes>
       <Route element={<Layout theme={theme} onToggleTheme={toggleTheme} />}>
-        <Route index element={<Navigate to={['factory', 'qc'].includes(user.role) ? '/work' : '/dashboard'} replace />} />
+        <Route index element={<Navigate to={['factory', 'qc', 'supervisor'].includes(user.role) ? '/work' : '/dashboard'} replace />} />
         <Route path="work" element={guard('work.view', <MyWork />)} />
         <Route path="dashboard" element={guard('dashboard.view', <Dashboard />)} />
         <Route path="orders" element={guard('orders.view', <Orders />)} />
         <Route path="orders/new" element={guard('orders.create', <NewOrder />)} />
         <Route path="orders/:id" element={guard('orders.view', <OrderDetail />)} />
         <Route path="review" element={guard('orders.review', <FactoryReview />)} />
-        <Route path="production" element={guard('production.update', <Production />)} />
+        <Route path="production" element={guard('production.view', <Production />)} />
         <Route path="qc" element={guard('qc.inspect', <QualityControl />)} />
         <Route path="dispatch" element={guard('dispatch.manage', <Dispatch />)} />
         <Route path="inventory" element={guard('inventory.view', <Inventory />)} />

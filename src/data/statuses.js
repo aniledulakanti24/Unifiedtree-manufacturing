@@ -1,4 +1,5 @@
-import { can, PERMISSIONS } from '../auth/permissions';
+import { can, rolesFor } from '../auth/permissions';
+import { daysUntil } from '../utils';
 
 export const STATUS = {
   PENDING_REVIEW: { label: 'Pending Factory Review', tone: 'amber' },
@@ -15,7 +16,7 @@ export const STATUS = {
 
 // The order life-cycle shown in the stage tracker.
 export const FLOW = [
-  { key: 'PENDING_REVIEW', label: 'PO Received' },
+  { key: 'PENDING_REVIEW', label: 'WO Received' },
   { key: 'ACCEPTED', label: 'Accepted' },
   { key: 'IN_PRODUCTION', label: 'Under Production' },
   { key: 'PACKAGING', label: 'Packaging' },
@@ -36,6 +37,33 @@ export const NEXT_STAGE = {
   PACKAGING: 'READY_TO_DISPATCH',
 };
 
+// Stages that can require a sign-off before the order moves on. The administrator picks which ones
+// on the Roles & Access page; all of them are on by default.
+export const APPROVAL_STAGES = ['ACCEPTED', 'IN_PRODUCTION', 'PACKAGING', 'READY_TO_DISPATCH', 'QC_APPROVED', 'CLIENT_APPROVED'];
+
+// Who completed each stage (and fixes it if the approval is rejected).
+const STAGE_OWNER = {
+  ACCEPTED: 'orders.review',
+  IN_PRODUCTION: 'production.update',
+  PACKAGING: 'production.update',
+  READY_TO_DISPATCH: 'production.update',
+  QC_APPROVED: 'qc.inspect',
+  CLIENT_APPROVED: 'client.approve',
+};
+export const stageOwnerPerm = (status) => STAGE_OWNER[status];
+
+/** The approval record for the order's current stage, if that stage still needs a sign-off. */
+export function openApproval(order) {
+  const a = order.approval;
+  return a && a.status === order.status && a.state !== 'approved' ? a : null;
+}
+
+/** True if this user may sign off the current stage (no one approves their own work, except the admin). */
+export function canApprove(user, order) {
+  const a = openApproval(order);
+  return Boolean(a && a.state === 'pending' && can(user.role, 'stage.approve') && (user.role === 'admin' || a.requestedById !== user.id));
+}
+
 const ACTION_BY_STATUS = {
   PENDING_REVIEW: ['orders.review', 'Check raw materials and accept / hold'],
   ON_HOLD: ['orders.review', 'Re-check materials for held order'],
@@ -48,18 +76,29 @@ const ACTION_BY_STATUS = {
   DISPATCHED: ['delivery.confirm', 'Confirm delivery'],
 };
 
+function entryFor(order) {
+  const a = openApproval(order);
+  if (a?.state === 'pending') return ['stage.approve', `Approve stage: ${STATUS[order.status].label.split(' · ')[0]}`];
+  if (a?.state === 'rejected') return [STAGE_OWNER[order.status], 'Approval rejected – fix & resubmit'];
+  return ACTION_BY_STATUS[order.status];
+}
+
 /** Returns the pending action text if the given role is responsible for the order's next step. */
 export function pendingActionFor(role, order) {
-  const entry = ACTION_BY_STATUS[order.status];
+  const entry = entryFor(order);
   return entry && can(role, entry[0]) ? entry[1] : null;
 }
 
 /** The order's next step and which roles (other than admin) can do it. */
 export function nextStep(order) {
-  const entry = ACTION_BY_STATUS[order.status];
+  const entry = entryFor(order);
   if (!entry) return null;
-  return { text: entry[1], roles: PERMISSIONS[entry[0]].roles.filter((r) => r !== 'admin') };
+  return { text: entry[1], roles: rolesFor(entry[0]).filter((r) => r !== 'admin'), approval: Boolean(openApproval(order)) };
 }
+
+const OPEN = (o) => !['DISPATCHED', 'DELIVERED'].includes(o.status);
+/** Past the expected delivery date and not yet sent. */
+export const isDelayed = (o) => OPEN(o) && daysUntil(o.expectedDeliveryDate) < 0;
 
 // Status filters used by dashboard tiles and the orders page.
 export const STATUS_GROUPS = [
@@ -68,4 +107,11 @@ export const STATUS_GROUPS = [
   { key: 'qc', label: 'QC & Client Approval', statuses: ['READY_TO_DISPATCH', 'QC_APPROVED'], tone: 'teal', icon: 'shield' },
   { key: 'ready', label: 'Ready to Ship', statuses: ['CLIENT_APPROVED'], tone: 'green', icon: 'truck' },
   { key: 'shipped', label: 'Dispatched / Delivered', statuses: ['DISPATCHED', 'DELIVERED'], tone: 'gray', icon: 'checkCircle' },
+];
+
+// Every filter as a test function: the status groups plus delayed orders and stages waiting for approval.
+export const ORDER_FILTERS = [
+  ...STATUS_GROUPS.map((g) => ({ ...g, test: (o) => g.statuses.includes(o.status) })),
+  { key: 'delayed', label: 'Delayed', tone: 'red', icon: 'alert', test: isDelayed },
+  { key: 'approval', label: 'Awaiting Approval', tone: 'violet', icon: 'lock', test: (o) => Boolean(openApproval(o)) },
 ];

@@ -3,11 +3,11 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { pendingActionFor } from '../data/statuses';
 import { checkAvailability, itemsSummary } from '../utils';
-import { DueDate, EmptyState, PriorityBadge, StatusBadge } from './ui';
+import { ApprovalBadge, DueDate, EmptyState, PriorityBadge, StatusBadge } from './ui';
 import Icon from './Icon';
 
 /**
- * Reusable PO table. Collapses into cards on small screens.
+ * Reusable work order table. Collapses into cards on small screens.
  * extra: optional array of { header, render(order) } columns appended at the end.
  */
 export default function OrderTable({
@@ -29,14 +29,14 @@ export default function OrderTable({
       <table className="table orders-table">
         <thead>
           <tr>
-            <th scope="col">PO No.</th>
+            <th scope="col">WO No.</th>
             <th scope="col">Customer</th>
             <th scope="col">Products</th>
             <th scope="col">Delivery</th>
             <th scope="col">Priority</th>
             <th scope="col">Status</th>
             {showMaterials && <th scope="col">Raw Material</th>}
-            <th scope="col">Sales</th>
+            <th scope="col">Entered by</th>
             {showAction && <th scope="col">Next Action</th>}
             {extra.map((c) => (
               <th key={c.header} scope="col">
@@ -50,13 +50,15 @@ export default function OrderTable({
             const action = pendingActionFor(user.role, o);
             const done = ['DISPATCHED', 'DELIVERED'].includes(o.status);
             const ok = showMaterials && checkAvailability(o.items, state.products, state.materials).ok;
+            const last = o.history[o.history.length - 1];
             return (
               <tr key={o.id} onClick={() => navigate(`/orders/${o.id}`)} className={action ? 'has-action' : ''}>
-                <td data-label="PO No." className="cell-po">
+                <td data-label="WO No." className="cell-po">
                   <Link to={`/orders/${o.id}`} onClick={(e) => e.stopPropagation()}>
                     {o.id}
                   </Link>
-                  <div className="muted small">{o.customerPoNo}</div>
+                  <div className="muted small nowrap">PO {o.customerPoNo}</div>
+                  <div className="muted small nowrap">PI {o.piNo || '—'}</div>
                 </td>
                 <td data-label="Customer" className="cell-customer">
                   {o.customer.name}
@@ -72,6 +74,10 @@ export default function OrderTable({
                 </td>
                 <td data-label="Status" className="cell-status">
                   <StatusBadge status={o.status} />
+                  <div className="status-extra">
+                    <ApprovalBadge order={o} />
+                    <span className="muted small">by {last.by}</span>
+                  </div>
                 </td>
                 {showMaterials && (
                   <td data-label="Raw material">
@@ -86,7 +92,7 @@ export default function OrderTable({
                     )}
                   </td>
                 )}
-                <td data-label="Sales" className="small">
+                <td data-label="Entered by" className="small">
                   {o.createdByName}
                 </td>
                 {showAction && (

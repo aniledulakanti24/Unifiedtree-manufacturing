@@ -1,9 +1,11 @@
 import { useVisibleOrders } from '../context/StoreContext';
+import { useLang } from '../i18n';
 import { Card, PageHeader } from '../components/ui';
 import OrderTable from '../components/OrderTable';
 import { fmtDateTime } from '../utils';
 
 export default function QualityControl() {
+  const { t } = useLang();
   const orders = useVisibleOrders();
   const queue = orders.filter((o) => o.status === 'READY_TO_DISPATCH');
   const inspected = orders
@@ -12,7 +14,7 @@ export default function QualityControl() {
 
   return (
     <>
-      <PageHeader title="Quality Control" subtitle="Inspect orders marked Ready to Dispatch. Passed reports go to the sales person and client." />
+      <PageHeader title={t('nav.qc')} subtitle="Inspect orders marked Ready to Dispatch. Passed reports go to the sales person and client." />
       <Card icon="shield" title={`Awaiting inspection (${queue.length})`}>
         <OrderTable orders={queue} showAction={false} empty="No orders waiting for QC." />
       </Card>

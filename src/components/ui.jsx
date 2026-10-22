@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { STATUS, FLOW, stepIndex } from '../data/statuses';
 import { ROLES } from '../auth/permissions';
-import { daysUntil, fmtDate } from '../utils';
+import { daysUntil, fmtDate, fmtDateTime } from '../utils';
 import { useLang } from '../i18n';
 import Icon from './Icon';
+
+const findLast = (list, fn) => [...list].reverse().find(fn);
 
 export function StatusBadge({ status }) {
   const { t } = useLang();
@@ -50,7 +52,76 @@ export function DueDate({ date, done }) {
   );
 }
 
-export function StageTracker({ status }) {
+/** The products, quantities, specs and customer needs: what the shop floor has to make. Always highlighted. */
+export function WorkDetails({ order, products, compact = false }) {
+  const { t } = useLang();
+  const name = (id) => products.find((p) => p.id === id)?.name ?? id;
+  return (
+    <div className={`work-details ${compact ? 'compact' : ''}`}>
+      <strong className="work-details-title">🛠️ {t('work.details')}</strong>
+      <ul className="work-details-items">
+        {order.items.map((it, i) => (
+          <li key={i}>
+            <span className="wd-qty">{it.qty}</span>
+            <span>
+              <strong>{name(it.productId)}</strong>
+              {it.specs && <span className="wd-spec">{it.specs}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {order.requirements && (
+        <p className="wd-needs">
+          <strong>📝 {t('work.customerNeeds')}:</strong> {order.requirements}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Who entered the order and who touched it last – visible to everyone at every stage. */
+export function PeopleLine({ order }) {
+  const { t } = useLang();
+  const last = order.history[order.history.length - 1];
+  return (
+    <div className="people-line small">
+      <span>👤 {t('work.enteredBy', { name: order.createdByName })}</span>
+      {last && last.by !== order.createdByName && (
+        <span>
+          · {t('work.lastBy', { name: last.by })} <span className="muted">{fmtDateTime(last.at)}</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Small badge for the approval state of the order's current stage. */
+export function ApprovalBadge({ order }) {
+  const { t } = useLang();
+  const a = order.approval?.status === order.status ? order.approval : null;
+  if (!a) return null;
+  if (a.state === 'approved') return <span className="badge tone-green">✔ {t('approval.approvedBy', { name: a.decidedBy })}</span>;
+  if (a.state === 'rejected') return <span className="badge tone-red">✖ {t('approval.rejectedShort')}</span>;
+  return <span className="badge tone-violet">⏳ {t('approval.pending')}</span>;
+}
+
+/** late / soon / ok, used to colour due-date chips and job cards. */
+export function dueTone(date) {
+  const d = daysUntil(date);
+  return d < 0 ? 'late' : d <= 3 ? 'soon' : 'ok';
+}
+
+/** Always-visible "Due in 2 days" chip. */
+export function DueChip({ date, big = false }) {
+  const { t } = useLang();
+  return (
+    <span className={`due-chip due-${dueTone(date)} ${big ? 'big' : ''}`} title={fmtDate(date)}>
+      ⏰ {dueText(t, date)}
+    </span>
+  );
+}
+
+export function StageTracker({ status, history = [], approval }) {
   const { t } = useLang();
   const current = stepIndex(status);
   const held = status === 'ON_HOLD';
@@ -74,12 +145,24 @@ export function StageTracker({ status }) {
       <ol className="tracker" ref={listRef}>
         {FLOW.map((f, i) => {
           const state = i < current || delivered ? 'done' : i === current ? (held ? 'held' : 'current') : 'todo';
+          // Latest person who did this stage, and who approved it.
+          const doneBy = state !== 'todo' && findLast(history, (h) => h.status === f.key && !h.approval);
+          const approvedBy = state !== 'todo' && findLast(history, (h) => h.status === f.key && h.approval === 'approved');
+          const waiting = i === current && approval?.status === f.key && approval.state !== 'approved';
           return (
             <li key={f.key} className={`step ${state}`} aria-current={i === current ? 'step' : undefined}>
               <span className="dot">
                 {state === 'done' ? <Icon name="check" size={16} /> : state === 'held' ? <Icon name="pause" size={14} /> : i + 1}
               </span>
               <span className="step-label">{i === 0 && held ? t('status.ON_HOLD') : t(`flow.${f.key}`)}</span>
+              {doneBy && (
+                <span className="step-who" title={fmtDateTime(doneBy.at)}>
+                  {doneBy.by}
+                  <span className="muted"> · {fmtDate(doneBy.at).slice(0, 6)}</span>
+                </span>
+              )}
+              {approvedBy && !waiting && <span className="step-ok">✔ {approvedBy.by}</span>}
+              {waiting && <span className={`step-wait ${approval.state}`}>{approval.state === 'rejected' ? '✖' : '⏳'} {t('approval.title')}</span>}
             </li>
           );
         })}
