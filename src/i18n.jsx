@@ -1,0 +1,466 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+
+// Simple-language strings for the app, in English and Hindi.
+// Keys missing in Hindi fall back to English, then to the key itself.
+
+const STRINGS = {
+  en: {
+    'lang.switch': 'हिंदी',
+    'lang.label': 'Change language to Hindi',
+
+    'navg.Overview': 'Overview',
+    'navg.Operations': 'Operations',
+    'navg.Inventory': 'Inventory',
+    'navg.Admin': 'Admin',
+    'nav.work': 'My work',
+    'nav.dashboard': 'Dashboard',
+    'nav.orders': 'Purchase Orders',
+    'nav.newOrder': 'New Customer PO',
+    'nav.review': 'Factory Review',
+    'nav.production': 'Production',
+    'nav.qc': 'Quality Control',
+    'nav.dispatch': 'Dispatch',
+    'nav.inventory': 'Raw Materials',
+    'nav.access': 'Roles & Access',
+    'nav.switchUser': 'Switch user',
+    'nav.reset': 'Reset demo data',
+
+    'role.admin': 'Admin',
+    'role.sales': 'Sales',
+    'role.factory': 'Factory',
+    'role.qc': 'QC',
+
+    'status.PENDING_REVIEW': 'New – check material',
+    'status.ON_HOLD': 'On hold',
+    'status.ACCEPTED': 'Accepted',
+    'status.IN_PRODUCTION': 'Making',
+    'status.PACKAGING': 'Packing',
+    'status.READY_TO_DISPATCH': 'Ready – needs QC',
+    'status.QC_APPROVED': 'QC passed – ask customer',
+    'status.CLIENT_APPROVED': 'Customer OK – send it',
+    'status.DISPATCHED': 'Sent',
+    'status.DELIVERED': 'Delivered',
+
+    'flow.PENDING_REVIEW': 'Order received',
+    'flow.ACCEPTED': 'Accepted',
+    'flow.IN_PRODUCTION': 'Making',
+    'flow.PACKAGING': 'Packing',
+    'flow.READY_TO_DISPATCH': 'Ready',
+    'flow.QC_APPROVED': 'QC passed',
+    'flow.CLIENT_APPROVED': 'Customer OK',
+    'flow.DISPATCHED': 'Sent',
+    'flow.DELIVERED': 'Delivered',
+    'tracker.step': 'Step {n} of {total}:',
+
+    'priority.Urgent': 'Urgent',
+    'priority.High': 'High',
+    'priority.Normal': 'Normal',
+
+    'due.late': '{n} days late',
+    'due.late1': '1 day late',
+    'due.today': 'Due today',
+    'due.left': '{n} days left',
+    'due.left1': '1 day left',
+
+    'work.hello': 'Hello, {name} 👋',
+    'work.count': '{n} jobs waiting for you',
+    'work.none': '🎉 No work waiting. Well done!',
+    'work.fullDashboard': 'Open full dashboard',
+    'work.customerNeeds': 'Customer needs',
+    'work.noNeeds': 'No special needs',
+    'work.problem': '⚠️ Problem',
+    'work.message': '💬 Message',
+    'work.open': '📄 Details',
+    'work.materialOk': '✅ Raw material is ready',
+    'work.materialShort': '❌ Raw material short:',
+
+    'act.accept': '✅ Accept order',
+    'act.hold': '⏸️ Hold order',
+    'act.start': '▶️ Start making',
+    'act.toPacking': '📦 Making done – start packing',
+    'act.toQc': '🔍 Packing done – send for checking',
+    'act.qc': '🔍 Check quality',
+    'act.dispatch': '🚚 Send the goods',
+    'act.deliver': '🏁 Goods delivered',
+    'act.askCustomer': '📞 Ask customer',
+
+    'confirm.title': 'Are you sure?',
+    'confirm.yes': '✅ Yes',
+    'confirm.no': '✖ No',
+
+    'reason.holdTitle': 'Why hold this order?',
+    'reason.problemTitle': 'What is the problem?',
+    'reason.qcTitle': 'What is wrong?',
+    'reason.concernTitle': "What is the customer's concern?",
+    'reason.pick': 'Tap one reason',
+    'reason.more': 'Write more (optional)',
+    'reason.send': 'Send',
+    'reason.cancel': 'Cancel',
+    'reason.needOne': 'Please tap a reason.',
+    'reason.material_short': 'Raw material short',
+    'reason.machine_busy': 'Machine busy with other order',
+    'reason.workers_short': 'Not enough workers',
+    'reason.spec_unclear': 'Size / design not clear',
+    'reason.machine_down': 'Machine broken',
+    'reason.power_cut': 'No electricity',
+    'reason.will_be_late': 'Will be late',
+    'reason.wrong_size': 'Wrong size',
+    'reason.finish_bad': 'Bad finish / paint',
+    'reason.wrong_colour': 'Wrong colour',
+    'reason.damaged': 'Damaged / broken',
+    'reason.qty_short': 'Quantity short',
+    'reason.want_changes': 'Customer wants changes',
+    'reason.other': 'Other',
+
+    'problem.banner': '⚠️ Problem:',
+    'problem.solved': '✅ Problem solved',
+    'problem.report': '⚠️ Report a problem',
+    'problem.by': 'Told by {name}',
+
+    'chat.title': 'Messages – sales & factory',
+    'chat.empty': 'No messages yet. Ask anything here.',
+    'chat.placeholder': 'Type a message…',
+    'chat.send': 'Send',
+    'chat.you': 'You',
+    'chat.quick': 'Quick replies',
+    'quick.ok': '👍 OK',
+    'quick.call_me': '📞 Please call me',
+    'quick.when_ready': '⏰ When will it be ready?',
+    'quick.checking': '🔍 Checking, will tell you',
+    'quick.done': '✅ Done',
+
+    'prod.title': 'Production Stages',
+    'prod.subtitle': 'Move accepted orders through Making → Packing → Ready.',
+    'prod.empty': 'No orders',
+    'prod.move': 'Move to {stage}',
+    'prod.waitQc': 'Waiting for QC check',
+    'prod.due': 'Due:',
+
+    'detail.products': 'Products & customer needs',
+    'detail.product': 'Product',
+    'detail.qty': 'Qty',
+    'detail.spec': 'Size / colour / details',
+
+    'action.your': 'Your action',
+    'action.status': 'Status',
+    'action.none': 'No action needed from you right now. Currently: {s}.',
+    'action.complete': 'This order is complete.',
+
+    'review.help': 'Check the raw material, then accept the order or hold it.',
+    'review.ok': 'All raw material is in stock',
+    'review.short': 'Raw material short – restock or hold',
+    'review.remarks': 'Remarks (optional)',
+    'review.accept': 'Accept order',
+    'review.hold': 'Hold order',
+    'review.updateHold': 'Change hold reason',
+    'review.restock': 'Go to Raw Materials to restock',
+
+    'stage.current': 'Now:',
+    'stage.note': 'Note (optional)',
+    'stage.notify': 'QC and the sales person will be told.',
+
+    'qc.help': 'Check the finished goods. The report goes to the sales person.',
+    'qc.checklist': 'Checklist',
+    'qc.tickAll': 'Tick all',
+    'qc.check.0': 'Size as per order',
+    'qc.check.1': 'Surface / paint OK',
+    'qc.check.2': 'Works properly / load test OK',
+    'qc.check.3': 'Count matches the order',
+    'qc.check.4': 'Packing & labels OK',
+    'qc.units': 'Pieces checked',
+    'qc.remarks': 'Remarks (optional)',
+    'qc.pass': '✅ Pass',
+    'qc.fail': '❌ Fail – make again',
+    'qc.errAll': 'Tick all checks to pass.',
+    'qc.allOk': 'All checks OK',
+
+    'client.concern': 'Raise concern',
+
+    'dispatch.help': 'Choose how the goods will go and enter the tracking number.',
+    'dispatch.mode.own': 'Own vehicle',
+    'dispatch.mode.courier': 'Courier',
+    'dispatch.mode.transporter': 'Transporter',
+    'dispatch.vehicle': 'Vehicle',
+    'dispatch.service': 'Delivery company',
+    'dispatch.driverName': 'Driver name',
+    'dispatch.driverPhone': 'Driver phone',
+    'dispatch.tripId': 'Trip / tracking number',
+    'dispatch.trackingId': 'Tracking / AWB / LR number',
+    'dispatch.date': 'Sent on',
+    'dispatch.eta': 'Will reach on',
+    'dispatch.remarks': 'Remarks',
+    'dispatch.confirm': 'Confirm – goods sent',
+    'dispatch.errTracking': 'Tracking / LR number is required.',
+    'dispatch.errDriver': 'Enter driver name and phone.',
+
+    'deliver.inTransit': 'On the way · tracking',
+    'deliver.note': 'Delivery note (optional)',
+    'deliver.btn': 'Mark as delivered',
+
+    'toast.create': '{id} created and sent to the factory',
+    'toast.accept': '{id} accepted – raw material issued',
+    'toast.hold': '{id} put on hold',
+    'toast.advance': '{id} moved to {stage}',
+    'toast.qcPass': 'QC passed for {id}',
+    'toast.qcFail': 'QC failed – {id} sent back to making',
+    'toast.clientOk': '{id} cleared for dispatch',
+    'toast.clientNo': '{id} sent back for rework',
+    'toast.dispatch': '{id} sent · tracking {tid}',
+    'toast.deliver': '{id} marked as delivered',
+    'toast.restock': 'Stock updated',
+    'toast.addMaterial': '{name} added',
+    'toast.reset': 'Demo data reset',
+    'toast.message': 'Message sent',
+    'toast.problem': 'Problem sent to sales and factory',
+    'toast.solved': 'Problem marked as solved',
+  },
+
+  hi: {
+    'lang.switch': 'English',
+    'lang.label': 'भाषा अंग्रेज़ी में बदलें',
+
+    'navg.Overview': 'मुख्य',
+    'navg.Operations': 'काम',
+    'navg.Inventory': 'स्टॉक',
+    'navg.Admin': 'एडमिन',
+    'nav.work': 'मेरा काम',
+    'nav.dashboard': 'डैशबोर्ड',
+    'nav.orders': 'सभी ऑर्डर',
+    'nav.newOrder': 'नया ऑर्डर डालें',
+    'nav.review': 'ऑर्डर जाँच',
+    'nav.production': 'उत्पादन',
+    'nav.qc': 'क्वालिटी जाँच',
+    'nav.dispatch': 'माल भेजना',
+    'nav.inventory': 'कच्चा माल',
+    'nav.access': 'रोल और एक्सेस',
+    'nav.switchUser': 'यूज़र बदलें',
+    'nav.reset': 'डेमो डेटा रीसेट',
+
+    'role.admin': 'एडमिन',
+    'role.sales': 'सेल्स',
+    'role.factory': 'फैक्ट्री',
+    'role.qc': 'QC',
+
+    'status.PENDING_REVIEW': 'नया – माल जाँचें',
+    'status.ON_HOLD': 'रुका हुआ',
+    'status.ACCEPTED': 'मंज़ूर',
+    'status.IN_PRODUCTION': 'बन रहा है',
+    'status.PACKAGING': 'पैकिंग',
+    'status.READY_TO_DISPATCH': 'तैयार – QC बाकी',
+    'status.QC_APPROVED': 'QC पास – ग्राहक से पूछें',
+    'status.CLIENT_APPROVED': 'ग्राहक की हाँ – भेजें',
+    'status.DISPATCHED': 'भेज दिया',
+    'status.DELIVERED': 'पहुँच गया',
+
+    'flow.PENDING_REVIEW': 'ऑर्डर मिला',
+    'flow.ACCEPTED': 'मंज़ूर',
+    'flow.IN_PRODUCTION': 'बन रहा है',
+    'flow.PACKAGING': 'पैकिंग',
+    'flow.READY_TO_DISPATCH': 'तैयार',
+    'flow.QC_APPROVED': 'QC पास',
+    'flow.CLIENT_APPROVED': 'ग्राहक की हाँ',
+    'flow.DISPATCHED': 'भेज दिया',
+    'flow.DELIVERED': 'पहुँच गया',
+    'tracker.step': 'चरण {n} / {total}:',
+
+    'priority.Urgent': 'बहुत जल्दी',
+    'priority.High': 'जल्दी',
+    'priority.Normal': 'सामान्य',
+
+    'due.late': '{n} दिन देर',
+    'due.late1': '1 दिन देर',
+    'due.today': 'आज देना है',
+    'due.left': '{n} दिन बाकी',
+    'due.left1': '1 दिन बाकी',
+
+    'work.hello': 'नमस्ते, {name} 👋',
+    'work.count': 'आपके लिए {n} काम बाकी हैं',
+    'work.none': '🎉 कोई काम बाकी नहीं। शाबाश!',
+    'work.fullDashboard': 'पूरा डैशबोर्ड खोलें',
+    'work.customerNeeds': 'ग्राहक की ज़रूरत',
+    'work.noNeeds': 'कोई खास ज़रूरत नहीं',
+    'work.problem': '⚠️ समस्या',
+    'work.message': '💬 संदेश',
+    'work.open': '📄 पूरी जानकारी',
+    'work.materialOk': '✅ कच्चा माल मौजूद है',
+    'work.materialShort': '❌ कच्चा माल कम है:',
+
+    'act.accept': '✅ ऑर्डर मंज़ूर करें',
+    'act.hold': '⏸️ ऑर्डर रोकें',
+    'act.start': '▶️ बनाना शुरू करें',
+    'act.toPacking': '📦 बन गया – पैकिंग शुरू',
+    'act.toQc': '🔍 पैकिंग हो गई – जाँच के लिए भेजें',
+    'act.qc': '🔍 क्वालिटी जाँचें',
+    'act.dispatch': '🚚 माल भेजें',
+    'act.deliver': '🏁 माल पहुँच गया',
+    'act.askCustomer': '📞 ग्राहक से पूछें',
+
+    'confirm.title': 'क्या आप पक्का हैं?',
+    'confirm.yes': '✅ हाँ',
+    'confirm.no': '✖ नहीं',
+
+    'reason.holdTitle': 'ऑर्डर क्यों रोक रहे हैं?',
+    'reason.problemTitle': 'क्या समस्या है?',
+    'reason.qcTitle': 'क्या गलत है?',
+    'reason.concernTitle': 'ग्राहक को क्या शिकायत है?',
+    'reason.pick': 'एक कारण चुनें',
+    'reason.more': 'और लिखें (ज़रूरी नहीं)',
+    'reason.send': 'भेजें',
+    'reason.cancel': 'रद्द करें',
+    'reason.needOne': 'कृपया एक कारण चुनें।',
+    'reason.material_short': 'कच्चा माल कम है',
+    'reason.machine_busy': 'मशीन दूसरे ऑर्डर में लगी है',
+    'reason.workers_short': 'कारीगर कम हैं',
+    'reason.spec_unclear': 'साइज़ / डिज़ाइन साफ़ नहीं है',
+    'reason.machine_down': 'मशीन खराब है',
+    'reason.power_cut': 'बिजली नहीं है',
+    'reason.will_be_late': 'देर होगी',
+    'reason.wrong_size': 'साइज़ गलत है',
+    'reason.finish_bad': 'फिनिश / पेंट खराब है',
+    'reason.wrong_colour': 'रंग गलत है',
+    'reason.damaged': 'माल टूटा / खराब है',
+    'reason.qty_short': 'गिनती में कम है',
+    'reason.want_changes': 'ग्राहक बदलाव चाहता है',
+    'reason.other': 'कुछ और',
+
+    'problem.banner': '⚠️ समस्या:',
+    'problem.solved': '✅ समस्या हल हो गई',
+    'problem.report': '⚠️ समस्या बताएँ',
+    'problem.by': '{name} ने बताया',
+
+    'chat.title': 'संदेश – सेल्स और फैक्ट्री',
+    'chat.empty': 'अभी कोई संदेश नहीं। यहाँ कुछ भी पूछें।',
+    'chat.placeholder': 'संदेश लिखें…',
+    'chat.send': 'भेजें',
+    'chat.you': 'आप',
+    'chat.quick': 'तुरंत जवाब',
+    'quick.ok': '👍 ठीक है',
+    'quick.call_me': '📞 मुझे फ़ोन करें',
+    'quick.when_ready': '⏰ कब तक तैयार होगा?',
+    'quick.checking': '🔍 देख रहा हूँ, बताता हूँ',
+    'quick.done': '✅ हो गया',
+
+    'prod.title': 'उत्पादन के चरण',
+    'prod.subtitle': 'मंज़ूर ऑर्डर को आगे बढ़ाएँ: बन रहा है → पैकिंग → तैयार।',
+    'prod.empty': 'कोई ऑर्डर नहीं',
+    'prod.move': '{stage} में भेजें',
+    'prod.waitQc': 'QC जाँच का इंतज़ार',
+    'prod.due': 'देना है:',
+
+    'detail.products': 'माल और ग्राहक की ज़रूरत',
+    'detail.product': 'माल',
+    'detail.qty': 'गिनती',
+    'detail.spec': 'साइज़ / रंग / जानकारी',
+
+    'action.your': 'आपका काम',
+    'action.status': 'स्थिति',
+    'action.none': 'अभी आपको कुछ नहीं करना है। अभी: {s}।',
+    'action.complete': 'यह ऑर्डर पूरा हो गया।',
+
+    'review.help': 'कच्चा माल जाँचें, फिर ऑर्डर मंज़ूर करें या रोकें।',
+    'review.ok': 'सारा कच्चा माल मौजूद है',
+    'review.short': 'कच्चा माल कम है – मँगवाएँ या रोकें',
+    'review.remarks': 'टिप्पणी (ज़रूरी नहीं)',
+    'review.accept': 'ऑर्डर मंज़ूर करें',
+    'review.hold': 'ऑर्डर रोकें',
+    'review.updateHold': 'रोकने का कारण बदलें',
+    'review.restock': 'कच्चा माल पेज पर जाएँ',
+
+    'stage.current': 'अभी:',
+    'stage.note': 'टिप्पणी (ज़रूरी नहीं)',
+    'stage.notify': 'QC और सेल्स वाले को बता दिया जाएगा।',
+
+    'qc.help': 'तैयार माल जाँचें। रिपोर्ट सेल्स वाले को जाएगी।',
+    'qc.checklist': 'जाँच सूची',
+    'qc.tickAll': 'सब पर टिक करें',
+    'qc.check.0': 'साइज़ ऑर्डर के अनुसार',
+    'qc.check.1': 'सतह / पेंट ठीक',
+    'qc.check.2': 'ठीक से काम करता है / लोड टेस्ट ठीक',
+    'qc.check.3': 'गिनती ऑर्डर के अनुसार',
+    'qc.check.4': 'पैकिंग और लेबल ठीक',
+    'qc.units': 'कितने पीस जाँचे',
+    'qc.remarks': 'टिप्पणी (ज़रूरी नहीं)',
+    'qc.pass': '✅ पास',
+    'qc.fail': '❌ फेल – दोबारा बनाएँ',
+    'qc.errAll': 'पास करने के लिए सब पर टिक करें।',
+
+    'client.concern': 'शिकायत दर्ज करें',
+
+    'dispatch.help': 'माल कैसे जाएगा चुनें और ट्रैकिंग नंबर डालें।',
+    'dispatch.mode.own': 'अपनी गाड़ी',
+    'dispatch.mode.courier': 'कूरियर',
+    'dispatch.mode.transporter': 'ट्रांसपोर्ट',
+    'dispatch.vehicle': 'गाड़ी',
+    'dispatch.service': 'डिलीवरी कंपनी',
+    'dispatch.driverName': 'ड्राइवर का नाम',
+    'dispatch.driverPhone': 'ड्राइवर का फ़ोन',
+    'dispatch.tripId': 'ट्रिप / ट्रैकिंग नंबर',
+    'dispatch.trackingId': 'ट्रैकिंग / AWB / LR नंबर',
+    'dispatch.date': 'भेजने की तारीख',
+    'dispatch.eta': 'पहुँचने की तारीख',
+    'dispatch.remarks': 'टिप्पणी',
+    'dispatch.confirm': 'पक्का करें – माल भेज दिया',
+    'dispatch.errTracking': 'ट्रैकिंग / LR नंबर ज़रूरी है।',
+    'dispatch.errDriver': 'ड्राइवर का नाम और फ़ोन डालें।',
+
+    'deliver.inTransit': 'रास्ते में · ट्रैकिंग',
+    'deliver.note': 'डिलीवरी टिप्पणी (ज़रूरी नहीं)',
+    'deliver.btn': 'पहुँच गया – पक्का करें',
+
+    'toast.create': '{id} बना और फैक्ट्री को भेजा गया',
+    'toast.accept': '{id} मंज़ूर – कच्चा माल जारी',
+    'toast.hold': '{id} रोका गया',
+    'toast.advance': '{id} अब: {stage}',
+    'toast.qcPass': '{id} QC पास',
+    'toast.qcFail': '{id} QC फेल – दोबारा बनाने भेजा',
+    'toast.clientOk': '{id} भेजने के लिए तैयार',
+    'toast.clientNo': '{id} दोबारा काम के लिए भेजा',
+    'toast.dispatch': '{id} भेज दिया · ट्रैकिंग {tid}',
+    'toast.deliver': '{id} पहुँच गया',
+    'toast.restock': 'स्टॉक अपडेट हुआ',
+    'toast.addMaterial': '{name} जोड़ा गया',
+    'toast.reset': 'डेमो डेटा रीसेट हुआ',
+    'toast.message': 'संदेश भेजा गया',
+    'toast.problem': 'समस्या सेल्स और फैक्ट्री को भेजी गई',
+    'toast.solved': 'समस्या हल हुई',
+  },
+};
+
+/** Translate without React (used by the store to write English text into records). */
+export function tr(lang, key, vars) {
+  const s = STRINGS[lang]?.[key] ?? STRINGS.en[key] ?? key;
+  return vars ? s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '') : s;
+}
+
+const KEY = 'unifiedtree-scm-lang';
+const LangContext = createContext(null);
+
+export function LangProvider({ children }) {
+  const [lang, setLangState] = useState(() => {
+    try {
+      return localStorage.getItem(KEY) === 'hi' ? 'hi' : 'en';
+    } catch {
+      return 'en';
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
+  const setLang = useCallback((l) => {
+    try {
+      localStorage.setItem(KEY, l);
+    } catch {
+      /* ignore */
+    }
+    setLangState(l);
+  }, []);
+
+  const value = useMemo(() => ({ lang, setLang, t: (key, vars) => tr(lang, key, vars) }), [lang, setLang]);
+  return <LangContext.Provider value={value}>{children}</LangContext.Provider>;
+}
+
+export function useLang() {
+  return useContext(LangContext);
+}
