@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useAuth } from '../context/AuthContext';
 import { useNotifications, useStore, useVisibleOrders } from '../context/StoreContext';
 import { can, ROLES } from '../auth/permissions';
-import { pendingActionFor } from '../data/statuses';
+import { PRODUCTION_STATUSES, canApprove, pendingActionFor } from '../data/statuses';
 import { useLang } from '../i18n';
 import Icon from './Icon';
 import { fmtDateTime } from '../utils';
@@ -15,31 +15,42 @@ const NAV_GROUPS = [
     items: [
       { to: '/work', label: 'nav.work', icon: 'checkCircle', perm: 'work.view', count: 'mine' },
       { to: '/dashboard', label: 'nav.dashboard', icon: 'dashboard', perm: 'dashboard.view' },
-      { to: '/orders', label: 'nav.orders', icon: 'file', perm: 'orders.view', end: true },
-      { to: '/orders/new', label: 'nav.newOrder', icon: 'plus', perm: 'orders.create' },
+      { to: '/orders', label: 'nav.orders', icon: 'file', perm: 'orders.view' },
+      { to: '/customers', label: 'nav.customers', icon: 'user', perm: 'customers.view' },
+      { to: '/reports', label: 'nav.reports', icon: 'chart', perm: 'reports.view' },
     ],
   },
   {
     title: 'Operations',
     items: [
       { to: '/review', label: 'nav.review', icon: 'factory', perm: 'orders.review', count: ['PENDING_REVIEW', 'ON_HOLD'] },
-      { to: '/production', label: 'nav.production', icon: 'layers', perm: 'production.view', count: ['ACCEPTED', 'IN_PRODUCTION', 'PACKAGING'] },
+      { to: '/production', label: 'nav.production', icon: 'layers', perm: 'production.view', count: () => PRODUCTION_STATUSES },
       { to: '/qc', label: 'nav.qc', icon: 'shield', perm: 'qc.inspect', count: ['READY_TO_DISPATCH'] },
-      { to: '/dispatch', label: 'nav.dispatch', icon: 'truck', perm: 'dispatch.manage', count: ['CLIENT_APPROVED'] },
+      { to: '/approvals', label: 'nav.approvals', icon: 'lock', perm: 'stage.approve', count: 'approvals' },
+      { to: '/dispatch', label: 'nav.dispatch', icon: 'truck', perm: 'dispatch.view', count: ['CLIENT_APPROVED'] },
+      { to: '/machines', label: 'nav.machines', icon: 'cog', perm: 'machines.view' },
     ],
   },
   {
     title: 'Inventory',
-    items: [{ to: '/inventory', label: 'nav.inventory', icon: 'box', perm: 'inventory.view' }],
+    items: [
+      { to: '/inventory', label: 'nav.inventory', icon: 'box', perm: 'inventory.view' },
+      { to: '/purchasing', label: 'nav.purchasing', icon: 'cart', perm: 'purchase.view' },
+      { to: '/scan', label: 'nav.scan', icon: 'qr', perm: 'scan.use' },
+    ],
   },
   {
     title: 'Admin',
-    items: [{ to: '/access', label: 'nav.access', icon: 'lock', perm: 'access.view' }],
+    items: [
+      { to: '/setup', label: 'nav.setup', icon: 'cog', perm: 'setup.manage' },
+      { to: '/access', label: 'nav.access', icon: 'lock', perm: 'access.view' },
+      { to: '/customize', label: 'nav.customize', icon: 'sliders', perm: 'access.view' },
+    ],
   },
 ];
 
 /** Big one-tap switch between English and Hindi. */
-export function LangToggle({ className = 'icon-btn lang-btn' }) {
+function LangToggle({ className = 'icon-btn lang-btn' }) {
   const { lang, setLang, t } = useLang();
   return (
     <button className={className} onClick={() => setLang(lang === 'hi' ? 'en' : 'hi')} aria-label={t('lang.label')} title={t('lang.label')}>
@@ -102,10 +113,12 @@ export default function Layout({ theme, onToggleTheme }) {
                 <div className="nav-title">{t(`navg.${g.title}`)}</div>
                 {items.map((n) => {
                   const count =
-                    n.count === 'mine'
+                    n.count === 'approvals'
+                      ? orders.filter((o) => canApprove(user, o)).length
+                      : n.count === 'mine'
                       ? orders.filter((o) => pendingActionFor(user.role, o) || o.problem).length
                       : n.count
-                        ? orders.filter((o) => n.count.includes(o.status)).length
+                        ? orders.filter((o) => (typeof n.count === 'function' ? n.count() : n.count).includes(o.status)).length
                         : 0;
                   return (
                     <NavLink key={n.to} to={n.to} end={n.end} className="nav-link">
@@ -148,6 +161,12 @@ export default function Layout({ theme, onToggleTheme }) {
           </button>
           <GlobalSearch />
           <div className="topbar-actions">
+            <PlantSwitch />
+            {can(user.role, 'ask.use') && (
+            <NavLink to="/ask" className="btn ask-btn" title="Ask a question about orders, stock or machines">
+              <Icon name="sparkle" size={16} /> <span>{t('nav.ask')}</span>
+            </NavLink>
+            )}
             <LangToggle />
             <button
               className="icon-btn"
@@ -172,6 +191,25 @@ export default function Layout({ theme, onToggleTheme }) {
         </main>
       </div>
     </div>
+  );
+}
+
+/** Which factory the whole app shows: all of them, or one. */
+function PlantSwitch() {
+  const { state, plant, setPlant } = useStore();
+  return (
+    <label className="plant-switch" title="Show one factory or all">
+      <Icon name="factory" size={16} />
+      <span className="sr-only">Factory</span>
+      <select value={plant} onChange={(e) => setPlant(e.target.value)}>
+        <option value="all">All factories</option>
+        {state.plants.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { can } from '../auth/permissions';
+import { isComplete } from '../data/statuses';
 import { useLang } from '../i18n';
 import { ReasonDialog, ReasonText } from './ReasonPicker';
 import { fmtDateTime } from '../utils';
 
 /** Open problem on an order (machine broken, will be late…) with a "solved" button, or a button to report one. */
-export default function ProblemBox({ order, compact = false }) {
+export default function ProblemBox({ order }) {
   const { user } = useAuth();
   const { act } = useStore();
   const { t } = useLang();
@@ -31,11 +32,11 @@ export default function ProblemBox({ order, compact = false }) {
     );
   }
 
-  if (!canReport || order.status === 'DELIVERED') return null;
+  if (!canReport || isComplete(order.status)) return null;
   return (
     <>
-      <button type="button" className={`btn danger ${compact ? '' : 'block'}`} onClick={() => setOpen(true)}>
-        {compact ? t('work.problem') : t('problem.report')}
+      <button type="button" className="btn danger block" onClick={() => setOpen(true)}>
+        {t('problem.report')}
       </button>
       {open && (
         <ReasonDialog

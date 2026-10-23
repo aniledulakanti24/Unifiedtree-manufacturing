@@ -3,18 +3,30 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { can, ROLES } from '../auth/permissions';
-import { NEXT_STAGE, canApprove, nextStep, openApproval } from '../data/statuses';
-import { DISPATCH_MODES, QC_CHECKS, VEHICLE_OPTIONS } from '../data/seed';
+import { featureOn } from '../auth/features';
+import { NEXT_STAGE, canApprove, canEditOrder, isComplete, isOpen, kindOf, nextStep, openApproval } from '../data/statuses';
+import { DISPATCH_MODES, QC_CHECKS } from '../data/seed';
+import { customerPath } from '../data/customers';
 import { ApprovalBadge, Card, DueChip, DueDate, PriorityBadge, StageTracker, StatusBadge, WorkDetails } from '../components/ui';
 import StageApproval from '../components/StageApproval';
+import { ExtraFieldRows } from '../components/ExtraFields';
+import PacketLabels from '../components/PacketLabels';
+import DispatchForm from '../components/DispatchForm';
 import { AccessDenied } from '../components/RequirePermission';
 import MaterialCheck from '../components/MaterialCheck';
+import ShopFloor from '../components/ShopFloor';
 import OrderChat from '../components/OrderChat';
 import ProblemBox from '../components/ProblemBox';
+import { DelayBanner, DelayButton } from '../components/Delay';
+import { RiskBanner } from '../components/Risk';
+import { PhotoGallery, PhotoPicker } from '../components/Photos';
+import VoiceInput from '../components/VoiceInput';
+import WhatsAppButton from '../components/WhatsApp';
 import { ReasonDialog, ReasonText, reasonRecord } from '../components/ReasonPicker';
 import Icon from '../components/Icon';
 import { useLang } from '../i18n';
-import { checkAvailability, fmtDate, fmtDateTime, todayISO } from '../utils';
+import { delayDays, fmtDate, fmtDateTime, orderUnits } from '../utils';
+import { orderAvailability } from '../data/stock';
 
 export default function OrderDetail() {
   const { id } = useParams();
@@ -40,7 +52,7 @@ export default function OrderDetail() {
 
   const step = nextStep(order);
   const mine = step && (step.approval && openApproval(order).state === 'pending' ? canApprove(user, order) : step.roles.includes(user.role) || user.role === 'admin');
-  const done = ['DISPATCHED', 'DELIVERED'].includes(order.status);
+  const done = !isOpen(order);
 
   return (
     <>
@@ -53,15 +65,29 @@ export default function OrderDetail() {
             {order.id} <StatusBadge status={order.status} /> <ApprovalBadge order={order} />
           </h1>
           <p className="muted">
-            {order.customer.name} · Customer PO {order.customerPoNo} · PI {order.piNo || '—'} · entered by{' '}
-            <strong>{order.createdByName}</strong> on {fmtDate(order.createdAt)}
+            {order.customer.name} · Customer PO <strong>{order.customerPoNo}</strong>
+            {order.poDate && ` (${fmtDate(order.poDate)})`} · PI <strong>{order.piNo || '—'}</strong>
+            {order.piDate && ` (${fmtDate(order.piDate)})`} · entered by <strong>{order.createdByName}</strong> on{' '}
+            {fmtDateTime(order.createdAt)} · <PlantPicker order={order} />
           </p>
         </div>
-        {!done && (
-          <div className="page-actions">
-            <DueChip date={order.expectedDeliveryDate} big />
-          </div>
-        )}
+        <div className="page-actions">
+          {!done && <DueChip date={order.expectedDeliveryDate} big />}
+          {canEditOrder(user, order) && (
+            <Link className="btn" to={`/orders/${order.id}/edit`} title="Change customer, PO / PI, dates, products or quantities until it is dispatched">
+              <Icon name="edit" size={16} /> Edit
+            </Link>
+          )}
+          <WhatsAppButton order={order} />
+          {featureOn('customerView') && (
+            <a className="btn" href={`/track/${order.id}`} target="_blank" rel="noopener noreferrer" title="The page the customer sees – no login needed">
+            <Icon name="user" size={16} /> Customer view
+          </a>
+          )}
+          <Link className="btn" to={`/orders/${order.id}/job-card`}>
+            <Icon name="qr" size={16} /> Job card
+          </Link>
+        </div>
       </div>
 
       <Card className="tracker-card">
@@ -81,6 +107,9 @@ export default function OrderDetail() {
         )}
       </Card>
 
+      <DelayBanner order={order} />
+      <RiskBanner order={order} />
+
       {order.status === 'ON_HOLD' && (
         <div className="alert red" role="alert">
           <Icon name="pause" size={18} />
@@ -93,29 +122,19 @@ export default function OrderDetail() {
       <div className="detail-grid">
         <div className="detail-action stack">
           <ActionPanel key={`${order.id}-${order.status}`} order={order} />
-          <ProblemBox order={order} />
-          <OrderChat order={order} />
+          {featureOn('problems') && <ProblemBox order={order} />}
+          <DelayButton order={order} className="btn warn-outline block delay-btn" />
+          {featureOn('chat') && <OrderChat order={order} />}
         </div>
 
         <div className="detail-main stack">
           <WorkDetails order={order} products={state.products} />
+          <PacketLabels order={order} />
 
           <Card title="Customer & delivery" icon="user">
             <dl className="dl">
               <dt>Customer</dt>
-              <dd>{order.customer.name}</dd>
-              <dt>Customer PO no.</dt>
-              <dd>
-                <strong>{order.customerPoNo}</strong> {order.poDate && <span className="muted small">· {fmtDate(order.poDate)}</span>}
-              </dd>
-              <dt>PI no.</dt>
-              <dd>
-                <strong>{order.piNo || '—'}</strong> {order.piDate && <span className="muted small">· {fmtDate(order.piDate)}</span>}
-              </dd>
-              <dt>Entered by</dt>
-              <dd>
-                {order.createdByName} <span className="muted small">· {fmtDateTime(order.createdAt)}</span>
-              </dd>
+              <dd>{can(user.role, 'customers.view') ? <Link to={customerPath(order.customer.name)}>{order.customer.name}</Link> : order.customer.name}</dd>
               <dt>Contact</dt>
               <dd>{order.customer.contact || '—'}</dd>
               <dt>Phone</dt>
@@ -128,10 +147,20 @@ export default function OrderDetail() {
               <dd>
                 <DueDate date={order.expectedDeliveryDate} done={done} />
               </dd>
+              {order.originalDeliveryDate && (
+                <>
+                  <dt>{t('delay.promised')}</dt>
+                  <dd>
+                    <s>{fmtDate(order.originalDeliveryDate)}</s>{' '}
+                    <span className="small muted">({t('delay.badge', { n: delayDays(order) })})</span>
+                  </dd>
+                </>
+              )}
               <dt>Priority</dt>
               <dd>
                 <PriorityBadge priority={order.priority} />
               </dd>
+              <ExtraFieldRows extra={order.extra} />
             </dl>
           </Card>
 
@@ -142,6 +171,8 @@ export default function OrderDetail() {
           )}
 
           {order.qc && <QcReport qc={order.qc} />}
+
+          {featureOn('shopFloor') && order.status !== 'PENDING_REVIEW' && order.status !== 'ON_HOLD' && <ShopFloor order={order} />}
 
           {order.dispatch && <DispatchInfo d={order.dispatch} />}
         </div>
@@ -166,6 +197,23 @@ export default function OrderDetail() {
   );
 }
 
+/** Factory name; people allowed to plan can move an open order to another factory. */
+function PlantPicker({ order }) {
+  const { state, act } = useStore();
+  const { user } = useAuth();
+  const name = state.plants.find((p) => p.id === order.plantId)?.name ?? '—';
+  if (!can(user.role, 'plants.manage') || !isOpen(order)) return <strong>{name}</strong>;
+  return (
+    <select className="inline-select" value={order.plantId} aria-label="Factory" onChange={(e) => act('SET_ORDER_PLANT', { id: order.id, plantId: e.target.value })}>
+      {state.plants.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function QcReport({ qc }) {
   const { t } = useLang();
   const pass = qc.result === 'PASS';
@@ -178,15 +226,20 @@ function QcReport({ qc }) {
         </span>
       </p>
       <ul className="checklist">
-        {QC_CHECKS.map((c, i) => (
-          <li key={c} className={qc.checks[i] ? 'ok-text' : 'bad-text'}>
-            <Icon name={qc.checks[i] ? 'checkCircle' : 'xCircle'} size={16} /> {t(`qc.check.${i}`)}
-          </li>
-        ))}
+        {qc.checks.map((c, i) => {
+          // Older reports stored only ticks against the built-in checklist.
+          const { label, ok } = typeof c === 'object' ? c : { label: QC_CHECKS[i], ok: c };
+          return (
+            <li key={label} className={ok ? 'ok-text' : 'bad-text'}>
+              <Icon name={ok ? 'checkCircle' : 'xCircle'} size={16} /> {checkText(label, t)}
+            </li>
+          );
+        })}
       </ul>
       <p className="small">
         <strong>Remarks:</strong> {qc.code ? <ReasonText code={qc.code} note={qc.note} /> : qc.remarks}
       </p>
+      <PhotoGallery photos={qc.photos} title="QC photo" />
     </Card>
   );
 }
@@ -236,10 +289,10 @@ function ActionPanel({ order }) {
   let body = null;
   if (openApproval(order)) body = <StageApproval order={order} />;
   else if (['PENDING_REVIEW', 'ON_HOLD'].includes(s) && can(role, 'orders.review')) body = <ReviewAction order={order} />;
-  else if (NEXT_STAGE[s] && can(role, 'production.update')) body = <StageAction order={order} />;
+  else if (kindOf(s) === 'work' && can(role, 'production.update')) body = <StageAction order={order} />;
   else if (s === 'READY_TO_DISPATCH' && can(role, 'qc.inspect')) body = <QcAction order={order} />;
   else if (s === 'QC_APPROVED' && can(role, 'client.approve')) body = <ClientAction order={order} />;
-  else if (s === 'CLIENT_APPROVED' && can(role, 'dispatch.manage')) body = <DispatchAction order={order} />;
+  else if (s === 'CLIENT_APPROVED' && can(role, 'dispatch.manage')) body = <DispatchForm order={order} />;
   else if (s === 'DISPATCHED' && can(role, 'delivery.confirm')) body = <DeliverAction order={order} />;
 
   return (
@@ -248,7 +301,7 @@ function ActionPanel({ order }) {
       icon={openApproval(order) ? 'lock' : body ? 'arrowRight' : 'info'}
       className={body ? 'action-card' : ''}
     >
-      {body ?? <p className="muted">{s === 'DELIVERED' ? t('action.complete') : t('action.none', { s: t(`status.${s}`) })}</p>}
+      {body ?? <p className="muted">{isComplete(s) ? t('action.complete') : t('action.none', { s: t(`status.${s}`) })}</p>}
     </Card>
   );
 }
@@ -264,10 +317,11 @@ function FieldError({ children }) {
 
 function ReviewAction({ order }) {
   const { state, act } = useStore();
+  const { user } = useAuth();
   const { t } = useLang();
   const [note, setNote] = useState('');
   const [holding, setHolding] = useState(false);
-  const { ok } = checkAvailability(order.items, state.products, state.materials);
+  const { ok } = orderAvailability(order, state);
 
   return (
     <>
@@ -290,11 +344,16 @@ function ReviewAction({ order }) {
           <Icon name="pause" size={16} /> {order.status === 'ON_HOLD' ? t('review.updateHold') : t('review.hold')}
         </button>
       </div>
-      {!ok && (
-        <Link to="/inventory" className="small inline-icon">
-          <Icon name="box" size={14} /> {t('review.restock')}
-        </Link>
-      )}
+      {!ok &&
+        (can(user.role, 'purchase.manage') ? (
+          <Link to={`/purchasing?for=${order.id}`} className="btn block">
+            <Icon name="truck" size={16} /> Raise purchase order for the shortage
+          </Link>
+        ) : (
+          <Link to="/inventory" className="small inline-icon">
+            <Icon name="box" size={14} /> {t('review.restock')}
+          </Link>
+        ))}
       {holding && (
         <ReasonDialog
           group="hold"
@@ -332,20 +391,36 @@ function StageAction({ order }) {
   );
 }
 
+// Built-in checklist items are translated; ones the admin added show as typed.
+const checkText = (label, t) => (QC_CHECKS.includes(label) ? t(`qc.check.${QC_CHECKS.indexOf(label)}`) : label);
+
 function QcAction({ order }) {
-  const { act } = useStore();
+  const { state, act } = useStore();
+  const list = state.settings.lists.qcChecks;
   const { t } = useLang();
-  const totalQty = order.items.reduce((s, it) => s + it.qty, 0);
-  const [checks, setChecks] = useState(QC_CHECKS.map(() => false));
+  const totalQty = orderUnits(order);
+  const [checks, setChecks] = useState(list.map(() => false));
   const [inspectedQty, setInspectedQty] = useState(totalQty);
   const [remarks, setRemarks] = useState('');
   const [failing, setFailing] = useState(false);
   const [error, setError] = useState('');
+  const [photos, setPhotos] = useState([]);
+  const [rejectedQty, setRejectedQty] = useState('0');
   const done = checks.filter(Boolean).length;
+  const rejected = Math.max(0, Number(rejectedQty) || 0);
 
   const pass = () => {
     if (done < checks.length) return setError(t('qc.errAll'));
-    act('QC_SUBMIT', { id: order.id, result: 'PASS', checks, inspectedQty: Number(inspectedQty), remarks: remarks.trim() || 'All checks OK' });
+    act('QC_SUBMIT', {
+      id: order.id,
+      result: 'PASS',
+      checks: list.map((label, i) => ({ label, ok: checks[i] })),
+      inspectedQty: Number(inspectedQty),
+      remarks: remarks.trim() || (rejected ? `${rejected} pcs rejected and replaced` : 'All checks OK'),
+      photos,
+      rejectedQty: rejected,
+      code: rejected ? 'other' : null,
+    });
   };
 
   return (
@@ -358,7 +433,7 @@ function QcAction({ order }) {
             ({done}/{checks.length})
           </span>
         </legend>
-        {QC_CHECKS.map((c, i) => (
+        {list.map((c, i) => (
           <label key={c} className={`check ${checks[i] ? 'checked' : ''}`}>
             <input
               type="checkbox"
@@ -369,10 +444,10 @@ function QcAction({ order }) {
                 setError('');
               }}
             />
-            {t(`qc.check.${i}`)}
+            {checkText(c, t)}
           </label>
         ))}
-        <button type="button" className="link-btn small" onClick={() => setChecks(QC_CHECKS.map(() => true))}>
+        <button type="button" className="link-btn small" onClick={() => setChecks(list.map(() => true))}>
           {t('qc.tickAll')}
         </button>
       </fieldset>
@@ -381,9 +456,18 @@ function QcAction({ order }) {
         <input type="number" min="1" value={inspectedQty} onChange={(e) => setInspectedQty(e.target.value)} />
       </label>
       <label>
-        {t('qc.remarks')}
-        <textarea rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+        Pieces rejected
+        <input type="number" min="0" value={rejectedQty} onChange={(e) => setRejectedQty(e.target.value)} />
+        <small className="hint">Recorded as scrap / rework with the reason. Use "Pass" if the rest is fine and the rejects were replaced.</small>
       </label>
+      <label>
+        {t('qc.remarks')}
+        <span className="with-voice">
+          <textarea rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+          <VoiceInput onText={(txt) => setRemarks((r) => (r ? `${r} ${txt}` : txt))} />
+        </span>
+      </label>
+      <PhotoPicker photos={photos} onChange={setPhotos} label="QC photos – shared with the customer" />
       <FieldError>{error}</FieldError>
       <div className="btn-row">
         <button className="btn success lg" onClick={pass}>
@@ -403,11 +487,13 @@ function QcAction({ order }) {
             act('QC_SUBMIT', {
               id: order.id,
               result: 'FAIL',
-              checks,
+              checks: list.map((label, i) => ({ label, ok: checks[i] })),
               inspectedQty: Number(inspectedQty),
               remarks: reasonRecord(code, all),
               code,
               note: all,
+              photos,
+              rejectedQty: rejected,
             });
             setFailing(false);
           }}
@@ -462,91 +548,6 @@ function ClientAction({ order }) {
           }}
         />
       )}
-    </>
-  );
-}
-
-function DispatchAction({ order }) {
-  const { act } = useStore();
-  const { t } = useLang();
-  const [d, setD] = useState({
-    mode: 'own',
-    carrier: VEHICLE_OPTIONS.own[0],
-    driverName: '',
-    driverPhone: '',
-    trackingId: '',
-    dispatchDate: todayISO(),
-    eta: order.expectedDeliveryDate,
-    remarks: '',
-  });
-  const [error, setError] = useState('');
-  const set = (k, v) => setD((x) => ({ ...x, [k]: v }));
-
-  const submit = () => {
-    if (!d.trackingId.trim()) return setError(t('dispatch.errTracking'));
-    if (d.mode === 'own' && (!d.driverName.trim() || !d.driverPhone.trim())) return setError(t('dispatch.errDriver'));
-    act('DISPATCH', { id: order.id, dispatch: { ...d, trackingId: d.trackingId.trim() } });
-  };
-
-  return (
-    <>
-      <p className="action-help">{t('dispatch.help')}</p>
-      <fieldset className="segmented" aria-label="Dispatch mode">
-        {Object.keys(DISPATCH_MODES).map((k) => (
-          <label key={k} className={d.mode === k ? 'active' : ''}>
-            <input
-              type="radio"
-              name="dispatch-mode"
-              value={k}
-              checked={d.mode === k}
-              onChange={() => setD((x) => ({ ...x, mode: k, carrier: VEHICLE_OPTIONS[k][0] }))}
-            />
-            {t(`dispatch.mode.${k}`)}
-          </label>
-        ))}
-      </fieldset>
-      <label>
-        {d.mode === 'own' ? t('dispatch.vehicle') : t('dispatch.service')}
-        <select value={d.carrier} onChange={(e) => set('carrier', e.target.value)}>
-          {VEHICLE_OPTIONS[d.mode].map((v) => (
-            <option key={v}>{v}</option>
-          ))}
-        </select>
-      </label>
-      {d.mode === 'own' && (
-        <div className="form-grid">
-          <label>
-            {t('dispatch.driverName')} <span className="req">*</span>
-            <input value={d.driverName} onChange={(e) => set('driverName', e.target.value)} autoComplete="off" />
-          </label>
-          <label>
-            {t('dispatch.driverPhone')} <span className="req">*</span>
-            <input type="tel" value={d.driverPhone} onChange={(e) => set('driverPhone', e.target.value)} autoComplete="off" />
-          </label>
-        </div>
-      )}
-      <label>
-        {d.mode === 'own' ? t('dispatch.tripId') : t('dispatch.trackingId')} <span className="req">*</span>
-        <input value={d.trackingId} onChange={(e) => set('trackingId', e.target.value)} autoComplete="off" />
-      </label>
-      <div className="form-grid">
-        <label>
-          {t('dispatch.date')}
-          <input type="date" value={d.dispatchDate} onChange={(e) => set('dispatchDate', e.target.value)} />
-        </label>
-        <label>
-          {t('dispatch.eta')}
-          <input type="date" value={d.eta} onChange={(e) => set('eta', e.target.value)} />
-        </label>
-      </div>
-      <label>
-        {t('dispatch.remarks')}
-        <input value={d.remarks} onChange={(e) => set('remarks', e.target.value)} />
-      </label>
-      <FieldError>{error}</FieldError>
-      <button className="btn primary block lg" onClick={submit}>
-        <Icon name="truck" size={16} /> {t('dispatch.confirm')}
-      </button>
     </>
   );
 }

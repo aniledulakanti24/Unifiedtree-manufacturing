@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { USERS } from '../data/seed';
 import { ROLES } from '../auth/permissions';
 import Icon from '../components/Icon';
 
@@ -15,7 +14,7 @@ const ROLE_INFO = {
 const FLOW = ['Work order', 'Factory review', 'Production', 'Stage approvals', 'QC', 'Client approval', 'Dispatch'];
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, users } = useAuth();
   const navigate = useNavigate();
 
   return (
@@ -40,7 +39,7 @@ export default function Login() {
         <h2>Sign in</h2>
         <p className="muted">Demo mode: choose a user to see the app with that role's access.</p>
         <div className="login-grid">
-          {USERS.map((u) => (
+          {users.map((u) => (
             <button
               key={u.id}
               className={`login-user tone-${ROLES[u.role].tone}`}

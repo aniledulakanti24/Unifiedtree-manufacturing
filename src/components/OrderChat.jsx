@@ -4,6 +4,7 @@ import { useStore } from '../context/StoreContext';
 import { useLang } from '../i18n';
 import { QUICK_REPLIES } from '../data/reasons';
 import { Card } from './ui';
+import VoiceInput from './VoiceInput';
 import { fmtDateTime } from '../utils';
 
 /** Message text in the reader's language: preset codes are translated, typed text is shown as written. */
@@ -77,6 +78,7 @@ export default function OrderChat({ order }) {
             placeholder={t('chat.placeholder')}
             aria-label={t('chat.placeholder')}
           />
+          <VoiceInput onText={(txt) => setText((v) => (v ? `${v} ${txt}` : txt))} />
           <button className="btn primary">{t('chat.send')}</button>
         </form>
       </Card>

@@ -1,5 +1,6 @@
 // Demo data. Dates are relative to "now" so the demo always looks current.
-import { APPROVAL_STAGES } from './statuses';
+import { APPROVAL_STAGES, DEFAULT_JOURNEY } from './statuses';
+import { DEFAULT_REASONS } from './reasons';
 
 export const USERS = [
   { id: 'u-admin', name: 'Anita Rao', role: 'admin', email: 'admin@unifiedtree.in' },
@@ -34,35 +35,120 @@ export const QC_CHECKS = [
   'Packaging & labelling intact',
 ];
 
+// `stock` is filled in from the lots below (total across factories).
 const RAW_MATERIALS = [
-  { id: 'RM-01', name: 'Steel Sheet (CRCA 1.2mm)', unit: 'kg', stock: 4200, reorderLevel: 1000 },
-  { id: 'RM-02', name: 'Aluminium Rod', unit: 'kg', stock: 1200, reorderLevel: 400 },
-  { id: 'RM-03', name: 'Plastic Granules (PP)', unit: 'kg', stock: 850, reorderLevel: 300 },
-  { id: 'RM-04', name: 'Copper Wire 2.5 sq.mm', unit: 'm', stock: 1800, reorderLevel: 1000 },
-  { id: 'RM-05', name: 'Powder Coat Paint', unit: 'L', stock: 40, reorderLevel: 60 },
-  { id: 'RM-06', name: 'Corrugated Packaging Box', unit: 'pcs', stock: 520, reorderLevel: 150 },
-  { id: 'RM-07', name: 'Bolts & Nuts Kit', unit: 'pcs', stock: 9000, reorderLevel: 2000 },
+  { id: 'RM-01', name: 'Steel Sheet (CRCA 1.2mm)', unit: 'kg', reorderLevel: 1000 },
+  { id: 'RM-02', name: 'Aluminium Rod', unit: 'kg', reorderLevel: 400 },
+  { id: 'RM-03', name: 'Plastic Granules (PP)', unit: 'kg', reorderLevel: 300 },
+  { id: 'RM-04', name: 'Copper Wire 2.5 sq.mm', unit: 'm', reorderLevel: 1000 },
+  { id: 'RM-05', name: 'Powder Coat Paint', unit: 'L', reorderLevel: 60 },
+  { id: 'RM-06', name: 'Corrugated Packaging Box', unit: 'pcs', reorderLevel: 150 },
+  { id: 'RM-07', name: 'Bolts & Nuts Kit', unit: 'pcs', reorderLevel: 2000 },
+];
+
+// Opening stock per factory: [material, factory, quantity, batch number].
+const OPENING_LOTS = [
+  ['RM-01', 'P1', 3000, 'SST-2609-114'],
+  ['RM-01', 'P2', 1200, 'SST-2609-115'],
+  ['RM-02', 'P1', 1200, 'SAG-AL-7702'],
+  ['RM-03', 'P2', 850, 'PP-26-0931'],
+  ['RM-04', 'P2', 1800, 'VW-CU-4410'],
+  ['RM-05', 'P1', 25, 'CC-PC-2208'],
+  ['RM-05', 'P2', 15, 'CC-PC-2209'],
+  ['RM-06', 'P1', 200, 'PKW-1180'],
+  ['RM-06', 'P2', 320, 'PKW-1181'],
+  ['RM-07', 'P1', 6000, 'SST-BN-5521'],
+  ['RM-07', 'P2', 3000, 'SST-BN-5522'],
 ];
 
 // Bill of materials: raw material required per 1 unit of finished product.
+// Route: the processes each unit goes through, with machine hours per unit (used for capacity planning).
 const PRODUCTS = [
   {
     id: 'FG-101',
     name: 'Steel Storage Cabinet',
     bom: { 'RM-01': 25, 'RM-05': 1.5, 'RM-07': 40, 'RM-06': 1 },
+    route: { cutting: 0.5, welding: 0.4, coating: 0.3, assembly: 0.3, packing: 0.1 },
   },
-  { id: 'FG-102', name: 'Aluminium Ladder 8ft', bom: { 'RM-02': 8, 'RM-07': 20, 'RM-06': 1 } },
+  {
+    id: 'FG-102',
+    name: 'Aluminium Ladder 8ft',
+    bom: { 'RM-02': 8, 'RM-07': 20, 'RM-06': 1 },
+    route: { cutting: 0.2, assembly: 0.3, packing: 0.05 },
+  },
   {
     id: 'FG-103',
     name: 'Electrical Distribution Panel',
     bom: { 'RM-01': 12, 'RM-04': 30, 'RM-03': 3, 'RM-07': 30, 'RM-06': 1 },
+    route: { cutting: 0.4, coating: 0.2, wiring: 1.0, packing: 0.1 },
   },
-  { id: 'FG-104', name: 'Plastic Storage Bin 50L', bom: { 'RM-03': 2, 'RM-06': 1 } },
+  {
+    id: 'FG-104',
+    name: 'Plastic Storage Bin 50L',
+    bom: { 'RM-03': 2, 'RM-06': 1 },
+    route: { moulding: 0.05, packing: 0.02 },
+  },
 ];
 
 const day = 86400000;
 const ago = (d, h = 0) => new Date(Date.now() - d * day - h * 3600000).toISOString();
 const ahead = (d) => new Date(Date.now() + d * day).toISOString().slice(0, 10);
+
+// Production processes. `making` processes run while an order is "Making"; packing runs in "Packing".
+export const PROCESSES = {
+  cutting: { label: 'Cutting & bending' },
+  welding: { label: 'Welding' },
+  coating: { label: 'Powder coating' },
+  moulding: { label: 'Injection moulding' },
+  wiring: { label: 'Wiring' },
+  assembly: { label: 'Assembly' },
+  packing: { label: 'Packing' },
+};
+
+const PLANTS = [
+  { id: 'P1', name: 'Hosur Plant', city: 'Hosur, TN' },
+  { id: 'P2', name: 'Chennai Plant', city: 'Chennai, TN' },
+];
+
+/** A machine (or work station): which process it does, in which plant, and how many hours a day it runs. */
+function machine(id, name, plantId, process, hoursPerDay, { lastMaintenance, everyDays = 30, downtime = [] }) {
+  return { id, name, plantId, process, hoursPerDay, lastMaintenance, maintenanceEveryDays: everyDays, downtime, maintenanceLog: [] };
+}
+
+const MACHINES = [
+  machine('M-01', 'Press brake PB-1', 'P1', 'cutting', 8, {
+    lastMaintenance: ahead(-20),
+    // Matches the "bending machine broken" problem on WO-2026-0001.
+    downtime: [{ from: ago(0, 3), to: null, reason: 'Hydraulic leak – mechanic coming tomorrow' }],
+  }),
+  machine('M-02', 'Welding bay W-1', 'P1', 'welding', 8, { lastMaintenance: ahead(-12), downtime: [{ from: ago(9), to: ago(8, 20), reason: 'Power cut' }] }),
+  machine('M-03', 'Powder coat line PC-1', 'P1', 'coating', 8, { lastMaintenance: ahead(-32) }),
+  machine('M-04', 'Assembly line A-1', 'P1', 'assembly', 16, { lastMaintenance: ahead(-5), everyDays: 60 }),
+  machine('M-05', 'Packing station P-1', 'P1', 'packing', 8, { lastMaintenance: ahead(-40), everyDays: 90 }),
+  machine('M-06', 'Press brake PB-2', 'P2', 'cutting', 8, { lastMaintenance: ahead(-27) }),
+  machine('M-07', 'Welding bay W-2', 'P2', 'welding', 8, { lastMaintenance: ahead(-10) }),
+  machine('M-08', 'Powder coat line PC-2', 'P2', 'coating', 8, { lastMaintenance: ahead(-15) }),
+  machine('M-09', 'Injection moulding IM-1', 'P2', 'moulding', 16, { lastMaintenance: ahead(-8), downtime: [{ from: ago(4), to: ago(3, 18), reason: 'Mould change' }] }),
+  machine('M-10', 'Wiring bench WB-1', 'P2', 'wiring', 16, { lastMaintenance: ahead(-50), everyDays: 90 }),
+  machine('M-11', 'Assembly line A-2', 'P2', 'assembly', 8, { lastMaintenance: ahead(-18), everyDays: 60 }),
+  machine('M-12', 'Packing station P-2', 'P2', 'packing', 8, { lastMaintenance: ahead(-29) }),
+];
+
+// Outside workshops that do a process for us (job work): material goes out on a challan and comes back.
+const JOB_WORKERS = [
+  { id: 'J1', name: 'Sri Murugan Coatings', process: 'coating', phone: '+91 98940 33127', leadDays: 3 },
+  { id: 'J2', name: 'Precision Laser Cutters', process: 'cutting', phone: '+91 99620 81455', leadDays: 2 },
+  { id: 'J3', name: 'Balaji Wiring Works', process: 'wiring', phone: '+91 94451 60298', leadDays: 4 },
+];
+
+const SUPPLIERS = [
+  { id: 'S1', name: 'Shakti Steel Traders', phone: '+91 94430 11872', materials: ['RM-01', 'RM-07'], leadDays: 4 },
+  { id: 'S2', name: 'Sagar Aluminium Co.', phone: '+91 98410 66203', materials: ['RM-02'], leadDays: 5 },
+  { id: 'S3', name: 'Prime Polymers', phone: '+91 90031 45120', materials: ['RM-03'], leadDays: 3 },
+  { id: 'S4', name: 'Vidyut Wires & Cables', phone: '+91 99400 27781', materials: ['RM-04'], leadDays: 3 },
+  { id: 'S5', name: 'ColourCoat Powders', phone: '+91 97910 55634', materials: ['RM-05'], leadDays: 2 },
+  { id: 'S6', name: 'Packwell Corrugators', phone: '+91 93810 70045', materials: ['RM-06'], leadDays: 2 },
+];
 
 const sales1 = USERS[1];
 const sales2 = USERS[2];
@@ -203,7 +289,21 @@ const ORDERS = [
     },
     items: [{ productId: 'FG-102', qty: 200, specs: 'Anti-skid rubber feet' }],
     requirements: 'ISI marked. Phased delivery acceptable.',
+    // Promised in 3 days, pushed back 15 days because aluminium rod is short.
+    originalDeliveryDate: ahead(3),
     expectedDeliveryDate: ahead(18),
+    delays: [
+      {
+        days: 15,
+        code: 'material_short',
+        note: 'Aluminium Rod short by 400 kg. Supplier delivers in 5 days, then 8 days to make.',
+        from: ahead(3),
+        to: ahead(18),
+        by: factory.name,
+        byId: factory.id,
+        at: ago(2, 8),
+      },
+    ],
     priority: 'Normal',
     createdBy: sales1.id,
     createdByName: sales1.name,
@@ -220,6 +320,9 @@ const ORDERS = [
     history: [
       ev('PENDING_REVIEW', ago(3), sales1, 'Work order entered and sent to factory'),
       ev('ON_HOLD', ago(2, 18), factory, 'Aluminium Rod short by 400 kg. Purchase raised with supplier, ETA 5 days.'),
+      ev('ON_HOLD', ago(2, 8), factory, `⏳ Delayed 15 days (${ahead(3)} → ${ahead(18)}): Raw material short – Aluminium Rod short by 400 kg`, {
+        delay: true,
+      }),
     ],
   }),
   order({
@@ -344,6 +447,61 @@ const ORDERS = [
   }),
 ];
 
+/**
+ * Finished orders from about a month ago, so period comparisons ("this month vs previous month")
+ * have something to compare with. Each one ran the full flow and was delivered.
+ */
+function pastOrder(n, customerName, items, daysAgo, seller, priority = 'Normal') {
+  const customer = ORDERS.find((o) => o.customer.name === customerName).customer;
+  const at = (offset) => ago(daysAgo - offset);
+  return order({
+    id: `WO-2026-${String(n).padStart(4, '0')}`,
+    customerPoNo: `${customerName.split(' ')[0].toUpperCase()}/PO/${1000 + n}`,
+    piNo: `PI-2026-${String(90 + n).padStart(4, '0')}`,
+    customer,
+    items,
+    requirements: 'Standard packaging.',
+    expectedDeliveryDate: ahead(-(daysAgo - 14)),
+    priority,
+    createdBy: seller.id,
+    createdByName: seller.name,
+    createdAt: at(0),
+    status: 'DELIVERED',
+    materialsDeducted: true,
+    qc: { result: 'PASS', checks: [true, true, true, true, true], inspectedQty: items[0].qty, remarks: 'All checks OK', by: qc.name, at: at(8) },
+    clientApproval: { note: 'Client approved QC report', by: seller.name, at: at(9) },
+    dispatch: {
+      mode: 'transporter', carrier: 'TCI Freight', vehicleNo: '', driverName: '', driverPhone: '',
+      trackingId: `TCI-${700000 + n * 37}`, dispatchDate: at(10).slice(0, 10), eta: at(12).slice(0, 10), remarks: '', by: factory.name, at: at(10),
+    },
+    history: [
+      ev('PENDING_REVIEW', at(0), seller, 'Work order entered and sent to factory'),
+      ev('ACCEPTED', at(1), factory, 'Raw material available'),
+      approvedEv('ACCEPTED', at(1), sup),
+      ev('IN_PRODUCTION', at(1.5), factory),
+      approvedEv('IN_PRODUCTION', at(1.5), sup),
+      ev('PACKAGING', at(6), factory),
+      approvedEv('PACKAGING', at(6), sup),
+      ev('READY_TO_DISPATCH', at(7), factory),
+      approvedEv('READY_TO_DISPATCH', at(7), sup),
+      ev('QC_APPROVED', at(8), qc, 'All checks OK'),
+      approvedEv('QC_APPROVED', at(8), sup),
+      ev('CLIENT_APPROVED', at(9), seller, 'Client approved QC report'),
+      approvedEv('CLIENT_APPROVED', at(9), sup),
+      ev('DISPATCHED', at(10), factory, `TCI Freight · Tracking TCI-${700000 + n * 37}`),
+      ev('DELIVERED', at(12), seller, 'Delivered to customer'),
+    ],
+  });
+}
+
+ORDERS.push(
+  pastOrder(8, 'Apex Industries', [{ productId: 'FG-101', qty: 15, specs: 'Blue RAL 5015' }], 45, sales1, 'High'),
+  pastOrder(9, 'Apex Industries', [{ productId: 'FG-103', qty: 10, specs: '8-way, IP54' }], 33, sales1),
+  pastOrder(10, 'Sunrise Hospitals', [{ productId: 'FG-101', qty: 6, specs: 'White, 5 shelves' }], 38, sales1),
+  pastOrder(11, 'Metro Builders Pvt Ltd', [{ productId: 'FG-103', qty: 25, specs: '12-way, IP54' }], 41, sales2, 'Urgent'),
+  pastOrder(12, 'Kaveri Medical College', [{ productId: 'FG-104', qty: 80, specs: 'Grey, with lid' }], 30, sales2),
+);
+
 const NOTIFICATIONS = [
   { id: 'N1', roles: ['factory'], userId: null, orderId: 'WO-2026-0002', message: 'New work order WO-2026-0002 from Nova Retail awaiting review', at: ago(0, 6), readBy: [] },
   { id: 'N2', roles: ['qc'], userId: sales2.id, orderId: 'WO-2026-0003', message: 'WO-2026-0003 is ready to dispatch – QC inspection required', at: ago(0, 8), readBy: [] },
@@ -352,15 +510,160 @@ const NOTIFICATIONS = [
   { id: 'N5', roles: [], userId: factory.id, orderId: 'WO-2026-0007', message: 'WO-2026-0007: stage "Packaging" rejected – Branch labels missing on 4 cartons by Kiran Patil', at: ago(0, 6), readBy: [] },
 ];
 
-export function createSeedState() {
+// Panels and bins are made in Chennai (wiring, moulding); cabinets and ladders in Hosur.
+const plantFor = (o) => (o.items.some((it) => ['FG-103', 'FG-104'].includes(it.productId)) ? 'P2' : 'P1');
+
+// Two past deliveries (one on time, one late with a rejection at incoming inspection) for the supplier
+// scorecard, and the open purchase order for the aluminium that WO-2026-0004 is waiting on.
+const PURCHASES = [
+  {
+    id: 'PUR-2026-0001',
+    supplierId: 'S1',
+    plantId: 'P1',
+    items: [{ rmId: 'RM-01', qty: 2000 }],
+    forOrders: [],
+    status: 'RECEIVED',
+    expectedDate: ahead(-36),
+    note: 'Monthly steel',
+    createdAt: ago(40),
+    createdBy: factory.name,
+    receipts: [{ at: ago(37), by: factory.name, batchNo: 'SST-2608-090', lines: [{ rmId: 'RM-01', accepted: 2000, rejected: 0, reason: '' }] }],
+  },
+  {
+    id: 'PUR-2026-0002',
+    supplierId: 'S5',
+    plantId: 'P1',
+    items: [{ rmId: 'RM-05', qty: 60 }],
+    forOrders: [],
+    status: 'RECEIVED',
+    expectedDate: ahead(-33),
+    note: 'Powder coat – grey and white',
+    createdAt: ago(36),
+    createdBy: factory.name,
+    receipts: [{ at: ago(31), by: factory.name, batchNo: 'CC-PC-2190', lines: [{ rmId: 'RM-05', accepted: 55, rejected: 5, reason: 'Lumps in 1 drum' }] }],
+  },
+  {
+    id: 'PUR-2026-0003',
+    supplierId: 'S2',
+    plantId: 'P1',
+    items: [{ rmId: 'RM-02', qty: 600 }],
+    forOrders: ['WO-2026-0004'],
+    status: 'SENT',
+    expectedDate: ahead(2),
+    note: 'Aluminium Rod for GreenLeaf ladders',
+    // The supplier has dispatched it – on the road with the transporter.
+    shipment: {
+      carrier: 'VRL Logistics',
+      trackingId: 'VRL-LR-8841207',
+      vehicleNo: 'TN-30-AB-4471',
+      dispatchedOn: ahead(-1),
+      eta: ahead(2),
+      at: ago(1, 2),
+      by: factory.name,
+    },
+    createdAt: ago(2, 8),
+    createdBy: factory.name,
+  },
+];
+
+const LOTS = OPENING_LOTS.map(([rmId, plantId, qty, batchNo], i) => ({
+  id: `LOT-${String(i + 1).padStart(4, '0')}`,
+  rmId,
+  plantId,
+  qty,
+  received: qty,
+  batchNo,
+  source: 'Opening stock',
+  receivedAt: ago(30),
+}));
+
+/** Demo orders already in production record the opening batches they were made from. */
+function withBatches(o) {
+  if (!o.materialsDeducted || o.materialLots) return o;
+  const used = {};
+  o.items.forEach((it) =>
+    Object.entries(PRODUCTS.find((p) => p.id === it.productId).bom).forEach(([rmId, q]) => (used[rmId] = (used[rmId] ?? 0) + q * it.qty)),
+  );
   return {
-    materials: RAW_MATERIALS.map((m) => ({ ...m })),
-    products: PRODUCTS.map((p) => ({ ...p, bom: { ...p.bom } })),
-    orders: ORDERS.map((o) => structuredClone(o)),
+    ...o,
+    materialLots: Object.entries(used).map(([rmId, qty]) => {
+      const lot = LOTS.find((l) => l.rmId === rmId && l.plantId === o.plantId) ?? LOTS.find((l) => l.rmId === rmId);
+      return { rmId, lotId: lot.id, batchNo: lot.batchNo, qty: Math.round(qty * 100) / 100 };
+    }),
+  };
+}
+
+/** Labour time, job work and scrap on a few demo orders. */
+const SHOP_FLOOR = {
+  'WO-2026-0001': {
+    timeLogs: [
+      { id: 'T1', process: 'cutting', by: factory.name, byId: factory.id, start: ago(4, 2), end: ago(3, 20) },
+      { id: 'T2', process: 'welding', by: factory.name, byId: factory.id, start: ago(2, 6), end: ago(2, 1) },
+    ],
+    jobWork: [
+      { id: 'JW-0001', process: 'coating', workerId: 'J1', qty: 20, challanNo: 'JWC-0412', expectedBack: ahead(2), status: 'OUT', sentAt: ago(1, 4), sentBy: factory.name },
+    ],
+  },
+  'WO-2026-0006': {
+    timeLogs: [{ id: 'T1', process: 'assembly', by: factory.name, byId: factory.id, start: ago(3, 8), end: ago(3, 2) }],
+    jobWork: [
+      {
+        id: 'JW-0000', process: 'coating', workerId: 'J1', qty: 12, challanNo: 'JWC-0398', expectedBack: ahead(-5), status: 'DONE',
+        sentAt: ago(8), sentBy: factory.name, returnedAt: ago(5), returnedBy: factory.name, okQty: 12, rejectedQty: 0, note: '',
+      },
+    ],
+  },
+  'WO-2026-0007': {
+    scrap: [{ qty: 4, code: 'damaged', note: 'Lids cracked in moulding', stage: 'IN_PRODUCTION', at: ago(2, 3), by: factory.name }],
+  },
+};
+
+export function createSeedState() {
+  const orders = ORDERS.map((o) => withBatches({ plantId: plantFor(o), ...structuredClone(o), ...structuredClone(SHOP_FLOOR[o.id] ?? {}) }));
+  // The opening batches' "received" includes what the demo orders already took, so "left / received" adds up.
+  const lots = LOTS.map((l) => {
+    const used = orders.flatMap((o) => o.materialLots ?? []).filter((u) => u.lotId === l.id).reduce((s, u) => s + u.qty, 0);
+    return { ...l, received: Math.round((l.qty + used) * 100) / 100 };
+  });
+  return {
+    materials: RAW_MATERIALS.map((m) => ({ ...m, stock: lots.filter((l) => l.rmId === m.id).reduce((s, l) => s + l.qty, 0) })),
+    lots,
+    products: PRODUCTS.map((p) => ({ ...p, bom: { ...p.bom }, route: { ...p.route } })),
+    orders,
+    plants: PLANTS.map((p) => ({ ...p })),
+    machines: MACHINES.map((m) => structuredClone(m)),
+    suppliers: SUPPLIERS.map((s) => ({ ...s, materials: [...s.materials] })),
+    purchases: PURCHASES.map((p) => structuredClone(p)),
     notifications: NOTIFICATIONS.map((n) => ({ ...n })),
     inventoryLog: [],
-    counters: { order: 7, notif: 5, log: 0 },
-    // Administrator settings: renamed sections, access changes and which stages need approval.
-    settings: { labels: {}, access: {}, approvalStages: [...APPROVAL_STAGES] },
+    jobWorkers: JOB_WORKERS.map((w) => ({ ...w })),
+    users: USERS.map((u) => ({ ...u })),
+    processes: Object.fromEntries(Object.entries(PROCESSES).map(([k, p]) => [k, { ...p }])),
+    counters: { order: 12, notif: 5, log: 0, purchase: 3, lot: LOTS.length, master: 0, jobWork: 1 },
+    // Administrator settings: renamed sections, access changes, which stages need approval, and the
+    // working calendar (0 = Sunday … 6 = Saturday) that capacity planning counts days with.
+    settings: {
+      labels: {},
+      access: {},
+      approvalStages: [...APPROVAL_STAGES],
+      // Production stages between "accepted" and QC, modules switched off, and extra work order fields.
+      workflow: { journey: DEFAULT_JOURNEY.map((s) => ({ ...s })), removed: [], names: {} },
+      features: {},
+      orderFields: [],
+      // Pick-lists the admin can edit: reasons, the QC checklist, and vehicles / couriers / transporters.
+      lists: {
+        reasons: Object.fromEntries(Object.entries(DEFAULT_REASONS).map(([g, codes]) => [g, [...codes]])),
+        customReasons: {},
+        qcChecks: [...QC_CHECKS],
+        vehicles: Object.fromEntries(Object.entries(VEHICLE_OPTIONS).map(([k, v]) => [k, [...v]])),
+      },
+      calendar: {
+        workDays: [1, 2, 3, 4, 5, 6],
+        holidays: [
+          { date: ahead(17), name: 'Diwali' },
+          { date: ahead(18), name: 'Diwali (Govardhan Puja)' },
+        ],
+      },
+    },
   };
 }

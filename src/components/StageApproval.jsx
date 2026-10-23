@@ -11,7 +11,7 @@ import { fmtDateTime } from '../utils';
  * stage can resubmit after a rejection; everyone else sees who it is waiting on.
  * Renders nothing when the current stage needs no approval.
  */
-export default function StageApproval({ order, big = false }) {
+export default function StageApproval({ order }) {
   const { user } = useAuth();
   const { act } = useStore();
   const { t } = useLang();
@@ -21,7 +21,6 @@ export default function StageApproval({ order, big = false }) {
   if (!a) return null;
 
   const stage = t(`flow.${order.status}`);
-  const btn = big ? 'xl' : 'lg';
   const approvers = rolesFor('stage.approve')
     .filter((r) => r !== 'admin')
     .map((r) => ROLES[r]?.label ?? r)
@@ -36,7 +35,7 @@ export default function StageApproval({ order, big = false }) {
         {owner && (
           <>
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('stage.note')} aria-label={t('stage.note')} />
-            <button className={`btn primary ${btn} block`} onClick={() => act('RESUBMIT_STAGE', { id: order.id, note: note.trim() })}>
+            <button className="btn primary lg block" onClick={() => act('RESUBMIT_STAGE', { id: order.id, note: note.trim() })}>
               {t('approval.resubmit')}
             </button>
           </>
@@ -79,11 +78,11 @@ export default function StageApproval({ order, big = false }) {
           {error}
         </p>
       )}
-      <div className={big ? 'work-actions' : 'btn-row'}>
-        <button className={`btn success ${btn}`} onClick={() => decide('APPROVE_STAGE')}>
+      <div className="btn-row">
+        <button className="btn success lg" onClick={() => decide('APPROVE_STAGE')}>
           {t('approval.approve')}
         </button>
-        <button className={`btn danger ${btn}`} onClick={() => decide('REJECT_STAGE')}>
+        <button className="btn danger lg" onClick={() => decide('REJECT_STAGE')}>
           {t('approval.reject')}
         </button>
       </div>

@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { STATUS, FLOW, stepIndex } from '../data/statuses';
+import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
+import { STATUS, FLOW, isComplete, stepIndex } from '../data/statuses';
 import { ROLES } from '../auth/permissions';
-import { daysUntil, fmtDate, fmtDateTime } from '../utils';
+import { daysUntil, fmtDate, fmtDateTime, isStageEvent } from '../utils';
 import { useLang } from '../i18n';
 import Icon from './Icon';
 
@@ -66,6 +68,7 @@ export function WorkDetails({ order, products, compact = false }) {
             <span>
               <strong>{name(it.productId)}</strong>
               {it.specs && <span className="wd-spec">{it.specs}</span>}
+              {it.barcode && <span className="wd-barcode">🏷 Packet barcode {it.barcode}{it.packQty ? ` · ${it.packQty} per packet` : ''}</span>}
             </span>
           </li>
         ))}
@@ -105,6 +108,25 @@ export function ApprovalBadge({ order }) {
   return <span className="badge tone-violet">⏳ {t('approval.pending')}</span>;
 }
 
+/**
+ * Change against the previous period: "▲ 3 (+50%)". `goodWhen` says which direction is good
+ * ('up' for output, 'down' for delays), so the colour tells better/worse, not just bigger/smaller.
+ */
+export function Delta({ now, prev, goodWhen = 'up', compact = false }) {
+  if (prev == null) return null;
+  const diff = now - prev;
+  const pct = prev ? Math.round((diff / prev) * 100) : null;
+  const good = diff === 0 || goodWhen === 'none' ? '' : (diff > 0) === (goodWhen === 'up') ? 'good' : 'bad';
+  const sign = diff > 0 ? '▲' : diff < 0 ? '▼' : '=';
+  return (
+    <span className={`delta ${good}`} title={`Previous period: ${prev}`}>
+      {sign} {Math.abs(diff)}
+      {pct != null && diff !== 0 && ` (${diff > 0 ? '+' : ''}${pct}%)`}
+      {!compact && <span className="delta-vs"> vs previous ({prev})</span>}
+    </span>
+  );
+}
+
 /** late / soon / ok, used to colour due-date chips and job cards. */
 export function dueTone(date) {
   const d = daysUntil(date);
@@ -125,7 +147,7 @@ export function StageTracker({ status, history = [], approval }) {
   const { t } = useLang();
   const current = stepIndex(status);
   const held = status === 'ON_HOLD';
-  const delivered = status === 'DELIVERED';
+  const delivered = isComplete(status);
   const listRef = useRef(null);
 
   // Keep the current step visible when the tracker scrolls horizontally on small screens.
@@ -146,7 +168,7 @@ export function StageTracker({ status, history = [], approval }) {
         {FLOW.map((f, i) => {
           const state = i < current || delivered ? 'done' : i === current ? (held ? 'held' : 'current') : 'todo';
           // Latest person who did this stage, and who approved it.
-          const doneBy = state !== 'todo' && findLast(history, (h) => h.status === f.key && !h.approval);
+          const doneBy = state !== 'todo' && findLast(history, (h) => h.status === f.key && isStageEvent(h));
           const approvedBy = state !== 'todo' && findLast(history, (h) => h.status === f.key && h.approval === 'approved');
           const waiting = i === current && approval?.status === f.key && approval.state !== 'approved';
           return (
@@ -211,7 +233,8 @@ export function Modal({ title, onClose, children }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return (
+  // Rendered on <body> so a transformed or clickable parent (e.g. a work card) can't trap or swallow it.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
         className="modal"
@@ -230,7 +253,8 @@ export function Modal({ title, onClose, children }) {
         </header>
         <div className="card-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -244,5 +268,66 @@ export function PageHeader({ title, subtitle, back, children }) {
       </div>
       {children && <div className="page-actions">{children}</div>}
     </div>
+  );
+}
+
+/**
+ * A row of small summary tiles. items: [{ key, label, value, icon, tone, sub?, to?, onClick?, active? }].
+ * A tile with `to` is a link, with `onClick` a toggle button (e.g. a filter), otherwise plain.
+ */
+export function StatTiles({ items, label }) {
+  return (
+    <div className="stat-tiles" role="group" aria-label={label}>
+      {items.map((s) => {
+        const body = (
+          <>
+            <span className="st-icon">
+              <Icon name={s.icon} size={16} />
+            </span>
+            <span className="st-text">
+              <span className="st-value">{s.value}</span>
+              <span className="st-label">{s.label}</span>
+              {s.sub && <span className="st-sub">{s.sub}</span>}
+            </span>
+          </>
+        );
+        const cls = `st tone-${s.tone ?? 'blue'} ${s.active ? 'active' : ''}`;
+        if (s.to)
+          return (
+            <Link key={s.key} to={s.to} className={cls}>
+              {body}
+            </Link>
+          );
+        if (s.onClick)
+          return (
+            <button key={s.key} type="button" className={cls} aria-pressed={Boolean(s.active)} onClick={s.onClick}>
+              {body}
+            </button>
+          );
+        return (
+          <div key={s.key} className={cls}>
+            {body}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** How far along its journey an order is, as a thin bar with "step 4 of 9". */
+export function StageProgress({ status }) {
+  const { t } = useLang();
+  const done = isComplete(status);
+  const i = done ? FLOW.length - 1 : stepIndex(status);
+  const pct = Math.round(((i + (done ? 1 : 0.5)) / FLOW.length) * 100);
+  return (
+    <span className={`stage-progress ${status === 'ON_HOLD' ? 'held' : done ? 'done' : ''}`} title={`${t(`flow.${FLOW[i]?.key}`)} – step ${i + 1} of ${FLOW.length}`}>
+      <span className="sp-bar">
+        <span style={{ width: `${pct}%` }} />
+      </span>
+      <span className="sp-text">
+        {i + 1}/{FLOW.length}
+      </span>
+    </span>
   );
 }
