@@ -1,19 +1,24 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
-import { pendingActionFor } from '../data/statuses';
-import { checkAvailability, itemsSummary } from '../utils';
-import { DueDate, EmptyState, PriorityBadge, StatusBadge } from './ui';
+import { isOpen, pendingActionFor } from '../data/statuses';
+import { can } from '../auth/permissions';
+import { itemsSummary } from '../utils';
+import { orderAvailability } from '../data/stock';
+import { ApprovalBadge, DueDate, EmptyState, PriorityBadge, StageProgress, StatusBadge } from './ui';
+import { DelayBadge } from './Delay';
+import { RiskBadge } from './Risk';
 import Icon from './Icon';
 
 /**
- * Reusable PO table. Collapses into cards on small screens.
+ * Reusable work order table. Collapses into cards on small screens.
  * extra: optional array of { header, render(order) } columns appended at the end.
  */
 export default function OrderTable({
   orders,
   showMaterials = false,
   showAction = true,
+  showEnteredBy,
   extra = [],
   empty = 'No orders found.',
   emptyHint,
@@ -21,6 +26,8 @@ export default function OrderTable({
   const { state } = useStore();
   const { user } = useAuth();
   const navigate = useNavigate();
+  // "Entered by" only matters to people who see everyone's work orders.
+  const enteredBy = showEnteredBy ?? can(user.role, 'orders.viewAll');
 
   if (orders.length === 0) return <EmptyState title={empty}>{emptyHint}</EmptyState>;
 
@@ -29,14 +36,13 @@ export default function OrderTable({
       <table className="table orders-table">
         <thead>
           <tr>
-            <th scope="col">PO No.</th>
+            <th scope="col">WO No.</th>
             <th scope="col">Customer</th>
             <th scope="col">Products</th>
             <th scope="col">Delivery</th>
-            <th scope="col">Priority</th>
             <th scope="col">Status</th>
             {showMaterials && <th scope="col">Raw Material</th>}
-            <th scope="col">Sales</th>
+            {enteredBy && <th scope="col">Entered by</th>}
             {showAction && <th scope="col">Next Action</th>}
             {extra.map((c) => (
               <th key={c.header} scope="col">
@@ -48,15 +54,18 @@ export default function OrderTable({
         <tbody>
           {orders.map((o) => {
             const action = pendingActionFor(user.role, o);
-            const done = ['DISPATCHED', 'DELIVERED'].includes(o.status);
-            const ok = showMaterials && checkAvailability(o.items, state.products, state.materials).ok;
+            const done = !isOpen(o);
+            const ok = showMaterials && orderAvailability(o, state).ok;
+            const last = o.history[o.history.length - 1];
             return (
               <tr key={o.id} onClick={() => navigate(`/orders/${o.id}`)} className={action ? 'has-action' : ''}>
-                <td data-label="PO No." className="cell-po">
+                <td data-label="WO No." className="cell-po">
                   <Link to={`/orders/${o.id}`} onClick={(e) => e.stopPropagation()}>
                     {o.id}
                   </Link>
-                  <div className="muted small">{o.customerPoNo}</div>
+                  <div className="muted small nowrap">PO {o.customerPoNo}</div>
+                  <div className="muted small nowrap">PI {o.piNo || '—'}</div>
+                  {o.priority !== 'Normal' && <PriorityBadge priority={o.priority} />}
                 </td>
                 <td data-label="Customer" className="cell-customer">
                   {o.customer.name}
@@ -66,12 +75,16 @@ export default function OrderTable({
                 </td>
                 <td data-label="Delivery">
                   <DueDate date={o.expectedDeliveryDate} done={done} />
-                </td>
-                <td data-label="Priority">
-                  <PriorityBadge priority={o.priority} />
+                  {!done && <DelayBadge order={o} />}
+                  {!done && <RiskBadge order={o} />}
                 </td>
                 <td data-label="Status" className="cell-status">
                   <StatusBadge status={o.status} />
+                  <StageProgress status={o.status} />
+                  <div className="status-extra">
+                    <ApprovalBadge order={o} />
+                    <span className="muted small">by {last.by}</span>
+                  </div>
                 </td>
                 {showMaterials && (
                   <td data-label="Raw material">
@@ -86,9 +99,11 @@ export default function OrderTable({
                     )}
                   </td>
                 )}
-                <td data-label="Sales" className="small">
-                  {o.createdByName}
-                </td>
+                {enteredBy && (
+                  <td data-label="Entered by" className="small">
+                    {o.createdByName}
+                  </td>
+                )}
                 {showAction && (
                   <td data-label="Next action" className={`small cell-action ${action ? '' : 'empty-action'}`}>
                     {action ? (

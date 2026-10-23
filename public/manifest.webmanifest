@@ -1,0 +1,13 @@
+{
+  "name": "Unifiedtree SCM",
+  "short_name": "Unifiedtree",
+  "description": "Work orders from customer PO to dispatch – production, approvals, QC, purchasing and machines.",
+  "start_url": "/work",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

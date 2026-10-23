@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useLang, tr } from '../i18n';
-import { REASON_ICONS, REASONS } from '../data/reasons';
+import { REASONS, reasonIcon } from '../data/reasons';
 import { Modal } from './ui';
 import Icon from './Icon';
+import VoiceInput from './VoiceInput';
 
 /** English text saved in records and notifications, e.g. "Raw material short – 400 kg less". */
 export const reasonRecord = (code, note) => [tr('en', `reason.${code}`), note].filter(Boolean).join(' – ');
@@ -42,7 +43,7 @@ export function ReasonDialog({ group, title, onSubmit, onClose }) {
             }}
           >
             <span className="reason-emoji" aria-hidden="true">
-              {REASON_ICONS[c]}
+              {reasonIcon(c)}
             </span>
             {t(`reason.${c}`)}
           </button>
@@ -50,7 +51,10 @@ export function ReasonDialog({ group, title, onSubmit, onClose }) {
       </div>
       <label>
         {t('reason.more')}
-        <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+        <span className="with-voice">
+          <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+          <VoiceInput onText={(txt) => setNote((n) => (n ? `${n} ${txt}` : txt))} />
+        </span>
       </label>
       {error && (
         <p className="field-error" role="alert">
@@ -63,32 +67,6 @@ export function ReasonDialog({ group, title, onSubmit, onClose }) {
         </button>
         <button type="button" className="btn primary lg" onClick={send}>
           {t('reason.send')}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-/** "Are you sure?" with big Yes / No, so a wrong tap does not move an order. */
-export function ConfirmDialog({ message, detail, onYes, onClose }) {
-  const { t } = useLang();
-  return (
-    <Modal title={t('confirm.title')} onClose={onClose}>
-      <p className="confirm-text">{message}</p>
-      {detail && <p className="muted">{detail}</p>}
-      <div className="btn-row">
-        <button type="button" className="btn ghost lg" onClick={onClose}>
-          {t('confirm.no')}
-        </button>
-        <button
-          type="button"
-          className="btn success lg"
-          onClick={() => {
-            onYes();
-            onClose();
-          }}
-        >
-          {t('confirm.yes')}
         </button>
       </div>
     </Modal>
